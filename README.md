@@ -21,15 +21,37 @@ A high-accuracy attendance platform using FastAPI, InsightFace (buffalo_l), FAIS
 
 ## Backend Setup
 
-1. Create env file.
-2. Install dependencies.
-3. Start API server.
+1. Create and activate a Python virtual environment.
+2. Create env file.
+3. Install dependencies.
+4. Start API server.
+
+Linux/macOS:
 
 ```bash
 cd backend
+python3 -m venv .venv
+source .venv/bin/activate
 cp .env.example .env
 pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Windows (PowerShell):
+
+```powershell
+cd backend
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+Copy-Item .env.example .env
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+To deactivate the environment when finished:
+
+```bash
+deactivate
 ```
 
 Default admin credentials:
