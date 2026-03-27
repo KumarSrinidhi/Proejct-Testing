@@ -8,6 +8,7 @@ export default function PersonsPage() {
   const [selectedPersonId, setSelectedPersonId] = useState(null);
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [editingPersonId, setEditingPersonId] = useState(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", department: "" });
 
   const loadPersons = async () => {
@@ -16,12 +17,6 @@ export default function PersonsPage() {
       setPersons(data);
       if (!selectedPersonId && data.length) {
         setSelectedPersonId(data[0].id);
-      }
-      if (selectedPersonId) {
-        const selected = data.find((p) => p.id === selectedPersonId);
-        if (selected) {
-          setEditForm({ name: selected.name, email: selected.email, department: selected.department });
-        }
       }
     } catch (error) {
       setUploadMessage(error?.response?.data?.detail || "Failed to load persons. Please login again.");
@@ -69,33 +64,49 @@ export default function PersonsPage() {
 
   const selectPerson = (person) => {
     setSelectedPersonId(person.id);
+    setUploadMessage("");
+  };
+
+  const startEditPerson = (person) => {
+    setEditingPersonId(person.id);
     setEditForm({ name: person.name, email: person.email, department: person.department });
     setUploadMessage("");
   };
 
-  const updateSelectedPerson = async () => {
-    if (!selectedPersonId) {
+  const cancelEditPerson = () => {
+    setEditingPersonId(null);
+    setEditForm({ name: "", email: "", department: "" });
+  };
+
+  const updatePerson = async (personId) => {
+    if (!personId) {
       setUploadMessage("Select a person to update.");
       return;
     }
     try {
-      await personApi.update(selectedPersonId, editForm);
+      await personApi.update(personId, editForm);
       setUploadMessage("Person updated successfully.");
+      cancelEditPerson();
       await loadPersons();
     } catch (error) {
       setUploadMessage(error?.response?.data?.detail || "Failed to update person.");
     }
   };
 
-  const deleteSelectedPerson = async () => {
-    if (!selectedPersonId) {
+  const deletePerson = async (personId) => {
+    if (!personId) {
       setUploadMessage("Select a person to delete.");
       return;
     }
     try {
-      await personApi.remove(selectedPersonId);
+      await personApi.remove(personId);
       setUploadMessage("Person deleted (deactivated) successfully.");
-      setSelectedPersonId(null);
+      if (selectedPersonId === personId) {
+        setSelectedPersonId(null);
+      }
+      if (editingPersonId === personId) {
+        cancelEditPerson();
+      }
       await loadPersons();
     } catch (error) {
       setUploadMessage(error?.response?.data?.detail || "Failed to delete person.");
@@ -116,45 +127,77 @@ export default function PersonsPage() {
         <h3 className="font-display text-lg mb-3">Persons</h3>
         <div className="space-y-2 max-h-[360px] overflow-auto">
           {persons.map((person) => (
-            <button
+            <div
               key={person.id}
-              className={`w-full text-left rounded p-2 border ${selectedPersonId === person.id ? "bg-sky/20" : "bg-white"}`}
-              onClick={() => selectPerson(person)}
+              className={`w-full rounded p-2 border ${selectedPersonId === person.id ? "bg-sky/20" : "bg-white"}`}
             >
-              <div className="font-semibold">{person.name}</div>
-              <div className="text-sm">{person.department}</div>
-            </button>
-          ))}
-        </div>
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  className="text-left flex-1"
+                  onClick={() => selectPerson(person)}
+                >
+                  <div className="font-semibold">{person.name}</div>
+                  <div className="text-sm">{person.department}</div>
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="rounded bg-mint text-white px-2 py-1 text-xs"
+                    onClick={() => startEditPerson(person)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded bg-red-600 text-white px-2 py-1 text-xs"
+                    onClick={() => deletePerson(person.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
 
-        <div className="mt-4 border-t pt-3 space-y-2">
-          <h4 className="font-display text-sm">Edit Selected Person</h4>
-          <input
-            className="w-full border rounded p-2"
-            placeholder="Name"
-            value={editForm.name}
-            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-          />
-          <input
-            className="w-full border rounded p-2"
-            placeholder="Email"
-            value={editForm.email}
-            onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-          />
-          <input
-            className="w-full border rounded p-2"
-            placeholder="Department"
-            value={editForm.department}
-            onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
-          />
-          <div className="flex gap-2">
-            <button className="rounded bg-mint text-white px-3 py-2" onClick={updateSelectedPerson} type="button">
-              Update
-            </button>
-            <button className="rounded bg-red-600 text-white px-3 py-2" onClick={deleteSelectedPerson} type="button">
-              Delete
-            </button>
-          </div>
+              {editingPersonId === person.id ? (
+                <div className="mt-3 space-y-2 border-t pt-2">
+                  <input
+                    className="w-full border rounded p-2"
+                    placeholder="Name"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  />
+                  <input
+                    className="w-full border rounded p-2"
+                    placeholder="Email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  />
+                  <input
+                    className="w-full border rounded p-2"
+                    placeholder="Department"
+                    value={editForm.department}
+                    onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="rounded bg-accent text-white px-3 py-2 text-sm"
+                      onClick={() => updatePerson(person.id)}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded bg-slate-700 text-white px-3 py-2 text-sm"
+                      onClick={cancelEditPerson}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ))}
         </div>
       </div>
 

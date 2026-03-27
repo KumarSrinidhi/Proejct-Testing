@@ -1,8 +1,10 @@
 import json
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi import Request
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,10 +39,13 @@ async def list_persons(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
     search: str = Query(default=""),
+    include_inactive: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> list[PersonRead]:
     query = select(Person)
+    if not include_inactive:
+        query = query.where(Person.is_active.is_(True))
     if search:
         like = f"%{search}%"
         query = query.where((Person.name.ilike(like)) | (Person.email.ilike(like)))
@@ -184,6 +189,31 @@ async def list_person_images(
     result = await db.execute(select(PersonImage).where(PersonImage.person_id == person_id).order_by(PersonImage.id.desc()))
     images = result.scalars().all()
     return [PersonImageRead.model_validate(image) for image in images]
+
+
+@router.get("/images/{image_id}/preview")
+async def preview_image(
+    image_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: object = Depends(require_admin),
+) -> FileResponse:
+    result = await db.execute(select(PersonImage).where(PersonImage.id == image_id))
+    image = result.scalar_one_or_none()
+    if image is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+
+    path = Path(image.image_path)
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found on disk")
+
+    suffix = path.suffix.lower()
+    media_type = "image/jpeg"
+    if suffix == ".png":
+        media_type = "image/png"
+    elif suffix in {".jpg", ".jpeg"}:
+        media_type = "image/jpeg"
+
+    return FileResponse(path=str(path), media_type=media_type)
 
 
 @router.delete("/images/{image_id}")

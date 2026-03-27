@@ -22,6 +22,8 @@ export const personApi = {
   update: (id, payload) => api.put(`/api/persons/${id}`, payload),
   remove: (id) => api.delete(`/api/persons/${id}`),
   uploadImages: (id, formData) => api.post(`/api/persons/${id}/images`, formData),
+  listImages: (id) => api.get(`/api/persons/${id}/images`),
+  previewImage: (imageId) => api.get(`/api/images/${imageId}/preview`, { responseType: "blob" }),
 };
 
 export const attendanceApi = {
