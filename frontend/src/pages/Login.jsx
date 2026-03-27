@@ -1,0 +1,38 @@
+import { useState } from "react";
+import { authApi } from "../services/api";
+
+export default function Login() {
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("admin123");
+  const [error, setError] = useState("");
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError("");
+    try {
+      const { data } = await authApi.login(username, password);
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("refresh_token", data.refresh_token);
+      window.location.href = "/";
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Login failed");
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <form onSubmit={submit} className="card w-full max-w-sm space-y-4">
+        <h1 className="font-display text-2xl">Attendance Login</h1>
+        <input className="w-full border rounded p-2" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <input
+          type="password"
+          className="w-full border rounded p-2"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button className="w-full bg-accent text-white rounded p-2">Sign In</button>
+        {error && <p className="text-red-600 text-sm">{error}</p>}
+      </form>
+    </div>
+  );
+}
