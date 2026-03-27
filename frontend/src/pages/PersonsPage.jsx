@@ -6,12 +6,18 @@ export default function PersonsPage() {
   const [persons, setPersons] = useState([]);
   const [form, setForm] = useState({ name: "", email: "", department: "" });
   const [selectedPersonId, setSelectedPersonId] = useState(null);
+  const [uploadMessage, setUploadMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   const loadPersons = async () => {
-    const { data } = await personApi.list();
-    setPersons(data);
-    if (!selectedPersonId && data.length) {
-      setSelectedPersonId(data[0].id);
+    try {
+      const { data } = await personApi.list();
+      setPersons(data);
+      if (!selectedPersonId && data.length) {
+        setSelectedPersonId(data[0].id);
+      }
+    } catch (error) {
+      setUploadMessage(error?.response?.data?.detail || "Failed to load persons. Please login again.");
     }
   };
 
@@ -27,11 +33,31 @@ export default function PersonsPage() {
   };
 
   const upload = async (files) => {
-    if (!selectedPersonId) return;
+    if (!selectedPersonId) {
+      setUploadMessage("Select a person before uploading images.");
+      return;
+    }
     const formData = new FormData();
     files.forEach((file) => formData.append("files", file));
-    await personApi.uploadImages(selectedPersonId, formData);
-    await loadPersons();
+    setUploading(true);
+    setUploadMessage("");
+
+    try {
+      const { data } = await personApi.uploadImages(selectedPersonId, formData);
+      const okCount = (data?.results || []).filter((r) => r.status === "ok").length;
+      const failed = (data?.results || []).filter((r) => r.status !== "ok");
+      if (failed.length) {
+        const firstReason = failed[0]?.reason || "Validation failed";
+        setUploadMessage(`Uploaded ${okCount} image(s). ${failed.length} failed: ${firstReason}`);
+      } else {
+        setUploadMessage(`Uploaded ${okCount} image(s) successfully.`);
+      }
+      await loadPersons();
+    } catch (error) {
+      setUploadMessage(error?.response?.data?.detail || "Image upload failed.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -60,7 +86,13 @@ export default function PersonsPage() {
         </div>
       </div>
 
-      <ImageUploader onUpload={upload} />
+      <ImageUploader onUpload={upload} selectedPersonId={selectedPersonId} uploading={uploading} />
+
+      {uploadMessage ? (
+        <div className="card text-sm">
+          {uploadMessage}
+        </div>
+      ) : null}
     </div>
   );
 }

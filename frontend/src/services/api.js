@@ -21,10 +21,7 @@ export const personApi = {
   create: (payload) => api.post("/api/persons", payload),
   update: (id, payload) => api.put(`/api/persons/${id}`, payload),
   remove: (id) => api.delete(`/api/persons/${id}`),
-  uploadImages: (id, formData) =>
-    api.post(`/api/persons/${id}/images`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    }),
+  uploadImages: (id, formData) => api.post(`/api/persons/${id}/images`, formData),
 };
 
 export const attendanceApi = {
@@ -39,6 +36,10 @@ export const trainingApi = {
   trigger: () => api.post("/api/train"),
   status: () => api.get("/api/train/status"),
   logs: () => api.get("/api/train/logs"),
+};
+
+export const videoApi = {
+  upload: (formData) => api.post("/api/video/upload", formData),
 };
 
 export default api;
