@@ -35,6 +35,16 @@ class VideoIngestionService:
 
     async def process_stream(self, frame_callback: FrameCallback) -> None:
         capture = self._open_capture()
+        if not capture.isOpened():
+            capture.release()
+            if self.source_type == "webcam":
+                raise RuntimeError(
+                    "Unable to open webcam source on backend host. "
+                    "Set webcam Source Path to a valid camera index (for example 0, 1) "
+                    "or use Video File input."
+                )
+            raise RuntimeError(f"Unable to open {self.source_type} source: {self.source_path}")
+
         self._running = True
         try:
             while self._running:

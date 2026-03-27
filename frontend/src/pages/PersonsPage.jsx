@@ -8,6 +8,7 @@ export default function PersonsPage() {
   const [selectedPersonId, setSelectedPersonId] = useState(null);
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", email: "", department: "" });
 
   const loadPersons = async () => {
     try {
@@ -15,6 +16,12 @@ export default function PersonsPage() {
       setPersons(data);
       if (!selectedPersonId && data.length) {
         setSelectedPersonId(data[0].id);
+      }
+      if (selectedPersonId) {
+        const selected = data.find((p) => p.id === selectedPersonId);
+        if (selected) {
+          setEditForm({ name: selected.name, email: selected.email, department: selected.department });
+        }
       }
     } catch (error) {
       setUploadMessage(error?.response?.data?.detail || "Failed to load persons. Please login again.");
@@ -60,6 +67,41 @@ export default function PersonsPage() {
     }
   };
 
+  const selectPerson = (person) => {
+    setSelectedPersonId(person.id);
+    setEditForm({ name: person.name, email: person.email, department: person.department });
+    setUploadMessage("");
+  };
+
+  const updateSelectedPerson = async () => {
+    if (!selectedPersonId) {
+      setUploadMessage("Select a person to update.");
+      return;
+    }
+    try {
+      await personApi.update(selectedPersonId, editForm);
+      setUploadMessage("Person updated successfully.");
+      await loadPersons();
+    } catch (error) {
+      setUploadMessage(error?.response?.data?.detail || "Failed to update person.");
+    }
+  };
+
+  const deleteSelectedPerson = async () => {
+    if (!selectedPersonId) {
+      setUploadMessage("Select a person to delete.");
+      return;
+    }
+    try {
+      await personApi.remove(selectedPersonId);
+      setUploadMessage("Person deleted (deactivated) successfully.");
+      setSelectedPersonId(null);
+      await loadPersons();
+    } catch (error) {
+      setUploadMessage(error?.response?.data?.detail || "Failed to delete person.");
+    }
+  };
+
   return (
     <div className="grid-auto">
       <form onSubmit={create} className="card space-y-2">
@@ -77,12 +119,42 @@ export default function PersonsPage() {
             <button
               key={person.id}
               className={`w-full text-left rounded p-2 border ${selectedPersonId === person.id ? "bg-sky/20" : "bg-white"}`}
-              onClick={() => setSelectedPersonId(person.id)}
+              onClick={() => selectPerson(person)}
             >
               <div className="font-semibold">{person.name}</div>
               <div className="text-sm">{person.department}</div>
             </button>
           ))}
+        </div>
+
+        <div className="mt-4 border-t pt-3 space-y-2">
+          <h4 className="font-display text-sm">Edit Selected Person</h4>
+          <input
+            className="w-full border rounded p-2"
+            placeholder="Name"
+            value={editForm.name}
+            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+          />
+          <input
+            className="w-full border rounded p-2"
+            placeholder="Email"
+            value={editForm.email}
+            onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+          />
+          <input
+            className="w-full border rounded p-2"
+            placeholder="Department"
+            value={editForm.department}
+            onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+          />
+          <div className="flex gap-2">
+            <button className="rounded bg-mint text-white px-3 py-2" onClick={updateSelectedPerson} type="button">
+              Update
+            </button>
+            <button className="rounded bg-red-600 text-white px-3 py-2" onClick={deleteSelectedPerson} type="button">
+              Delete
+            </button>
+          </div>
         </div>
       </div>
 

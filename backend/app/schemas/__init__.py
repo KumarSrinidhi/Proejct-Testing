@@ -1,7 +1,7 @@
 from app.schemas.attendance import AttendanceRead, AttendanceTodaySummary
 from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse
 from app.schemas.person import PersonCreate, PersonDetail, PersonImageRead, PersonRead, PersonUpdate
-from app.schemas.training import TrainingLogRead, TrainingSummary
+from app.schemas.training import TrainingLogRead, TrainingLogUpdate, TrainingSummary
 
 __all__ = [
     "AttendanceRead",
@@ -15,5 +15,6 @@ __all__ = [
     "PersonRead",
     "PersonUpdate",
     "TrainingLogRead",
+    "TrainingLogUpdate",
     "TrainingSummary",
 ]

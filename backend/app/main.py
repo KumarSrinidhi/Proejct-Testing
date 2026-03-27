@@ -8,6 +8,7 @@ from app.database import Base, SessionLocal, engine
 from app.models.user import User
 from app.services.attendance_service import AttendanceService
 from app.services.face_recognition import FaceRecognitionService
+from app.config import get_settings
 from app.utils.security import hash_password
 from app.websocket.stream_handler import router as ws_router
 
@@ -16,6 +17,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+settings = get_settings()
 
 app = FastAPI(title="Face Recognition Attendance System")
 app.add_middleware(
@@ -44,10 +46,16 @@ async def startup() -> None:
 
     # Ensure a default admin exists for first-time setup.
     async with SessionLocal() as db:
-        result = await db.execute(select(User).where(User.username == "admin"))
+        result = await db.execute(select(User).where(User.username == settings.admin_username))
         user = result.scalar_one_or_none()
         if user is None:
-            db.add(User(username="admin", hashed_password=hash_password("admin123"), is_admin=True))
+            db.add(
+                User(
+                    username=settings.admin_username,
+                    hashed_password=hash_password(settings.admin_password),
+                    is_admin=True,
+                )
+            )
             await db.commit()
 
     app.state.face_service = FaceRecognitionService()

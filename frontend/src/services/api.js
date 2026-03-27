@@ -36,6 +36,8 @@ export const trainingApi = {
   trigger: () => api.post("/api/train"),
   status: () => api.get("/api/train/status"),
   logs: () => api.get("/api/train/logs"),
+  getLog: (id) => api.get(`/api/train/logs/${id}`),
+  updateLog: (id, payload) => api.put(`/api/train/logs/${id}`, payload),
 };
 
 export const videoApi = {

@@ -11,6 +11,8 @@ A high-accuracy attendance platform using FastAPI, InsightFace (buffalo_l), FAIS
 - Training pipeline with logs and index/cache persistence
 - Attendance cooldown logic with cropped-face archival
 - WebSocket live recognition stream from file/webcam/rtsp placeholder
+- Live preview panel with real-time bounding box overlay
+- Live recognition events with IST timestamps and clear action
 - React + Tailwind + Chart.js dashboard, heatmap, trends, CRUD, and live feed
 
 ## Project Structure
@@ -59,6 +61,11 @@ Default admin credentials:
 - username: admin
 - password: admin123
 
+You can override the bootstrap admin account in `.env` using:
+
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
+
 ## Frontend Setup
 
 ```bash
@@ -78,9 +85,11 @@ docker compose up --build
 ## CUDA Notes
 
 - InsightFace and FAISS are configured to auto-detect CUDA.
+- `GPU_STRICT_MODE=true` enforces GPU-only heavy processing and blocks CPU fallback.
 - Runtime uses:
   - ctx_id=0 when torch.cuda.is_available(), else -1
-  - FAISS GPU index when available, else CPU fallback
+  - FAISS GPU index when available
+  - Torch CUDA tensor similarity search for recognition matching
 - For CUDA deployment, use CUDA-compatible base image and install GPU-enabled PyTorch + FAISS.
 
 ## Training and Recognition Flow
@@ -98,12 +107,16 @@ See backend/.env.example for full configuration including:
 - DATABASE_URL
 - SECRET_KEY
 - RECOGNITION_THRESHOLD
+- FACE_DETECTION_THRESHOLD
 - ATTENDANCE_COOLDOWN_SECONDS
 - FRAME_PROCESS_INTERVAL
 - CUDA_ENABLED
+- GPU_STRICT_MODE
 - INSIGHTFACE_MODEL
 - VIDEO_SOURCE_TYPE
 - VIDEO_SOURCE_PATH
+- ADMIN_USERNAME
+- ADMIN_PASSWORD
 
 ## Testing
 

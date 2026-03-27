@@ -19,3 +19,7 @@ class TrainingLogRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TrainingLogUpdate(BaseModel):
+    status: str

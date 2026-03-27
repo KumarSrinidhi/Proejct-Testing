@@ -25,6 +25,10 @@ class FaceRecognitionService:
         self._faiss: Any | None = None
         self._index: Any | None = None
         self._gpu_resources: Any | None = None
+        self._torch: Any | None = None
+        self._torch_embeddings: Any | None = None
+        self._gpu_available: bool = False
+        self._faiss_gpu_enabled: bool = False
         self._index_to_person_id: list[int] = []
         self._person_name_cache: dict[int, str] = {}
         self._embeddings_cache: dict[int, list[float]] = {}
@@ -32,34 +36,55 @@ class FaceRecognitionService:
         self._model_dir.mkdir(parents=True, exist_ok=True)
 
     def initialize(self) -> None:
+        self._gpu_available = bool(settings.cuda_enabled and is_cuda_available())
+        if settings.gpu_strict_mode and not self._gpu_available:
+            raise RuntimeError("GPU strict mode is enabled but CUDA is not available")
+
         try:
             import insightface
 
-            ctx_id = 0 if settings.cuda_enabled and is_cuda_available() else -1
+            ctx_id = 0 if self._gpu_available else -1
             self._face_app = insightface.app.FaceAnalysis(name=settings.insightface_model)
-            self._face_app.prepare(ctx_id=ctx_id, det_thresh=0.5)
+            self._face_app.prepare(ctx_id=ctx_id, det_thresh=settings.face_detection_threshold)
             logger.info("InsightFace initialized", extra={"ctx_id": ctx_id})
         except Exception as exc:
             logger.exception("Failed to initialize InsightFace: %s", exc)
             self._face_app = None
+            if settings.gpu_strict_mode:
+                raise
 
         try:
             import faiss
 
             self._faiss = faiss
+            self._faiss_gpu_enabled = False
             self._index = faiss.IndexFlatIP(512)
-            if settings.cuda_enabled and is_cuda_available():
+            if self._gpu_available:
                 try:
                     self._gpu_resources = faiss.StandardGpuResources()
                     self._index = faiss.index_cpu_to_gpu(self._gpu_resources, 0, self._index)
+                    self._faiss_gpu_enabled = True
                     logger.info("FAISS GPU index initialized")
                 except Exception as gpu_exc:
-                    logger.warning("FAISS GPU unavailable, using CPU: %s", gpu_exc)
+                    logger.warning("FAISS GPU unavailable: %s", gpu_exc)
             logger.info("FAISS index initialized")
         except Exception as exc:
             logger.exception("Failed to initialize FAISS: %s", exc)
             self._faiss = None
             self._index = None
+            if settings.gpu_strict_mode and self._gpu_available:
+                logger.warning("FAISS unavailable, GPU search will rely on Torch")
+
+        if self._gpu_available:
+            try:
+                import torch
+
+                self._torch = torch
+            except Exception as exc:
+                self._torch = None
+                logger.warning("Torch import failed for GPU search: %s", exc)
+                if settings.gpu_strict_mode:
+                    raise RuntimeError("GPU strict mode requires torch with CUDA support") from exc
 
     def _normalize(self, emb: np.ndarray) -> np.ndarray:
         norm = np.linalg.norm(emb)
@@ -140,13 +165,42 @@ class FaceRecognitionService:
         if self._faiss is None:
             return
         self._index = self._faiss.IndexFlatIP(512)
-        if settings.cuda_enabled and is_cuda_available():
+        self._faiss_gpu_enabled = False
+        if self._gpu_available:
             try:
                 self._gpu_resources = self._faiss.StandardGpuResources()
                 self._index = self._faiss.index_cpu_to_gpu(self._gpu_resources, 0, self._index)
+                self._faiss_gpu_enabled = True
             except Exception as exc:
                 logger.warning("Failed to create FAISS GPU index: %s", exc)
         self._index.add(vectors)
+
+    def _build_gpu_embedding_matrix(self, vectors: np.ndarray) -> None:
+        self._torch_embeddings = None
+        if not self._gpu_available:
+            return
+        if self._torch is None:
+            if settings.gpu_strict_mode:
+                raise RuntimeError("GPU strict mode requires torch CUDA tensor search")
+            return
+        try:
+            self._torch_embeddings = self._torch.from_numpy(vectors).to("cuda")
+        except Exception as exc:
+            logger.warning("Failed to build GPU embedding matrix: %s", exc)
+            if settings.gpu_strict_mode:
+                raise
+
+    def _search_with_torch_gpu(self, emb: np.ndarray) -> tuple[int | None, float]:
+        if self._torch is None or self._torch_embeddings is None:
+            return None, 0.0
+        query = self._torch.from_numpy(emb.astype(np.float32)).to("cuda")
+        sims = self._torch.matmul(self._torch_embeddings, query)
+        best_score, best_idx = self._torch.max(sims, dim=0)
+        idx = int(best_idx.item())
+        score = float(best_score.item())
+        if idx < 0 or idx >= len(self._index_to_person_id):
+            return None, 0.0
+        return self._index_to_person_id[idx], score
 
     async def rebuild_index(self, db: AsyncSession) -> dict[str, int]:
         start = perf_counter()
@@ -192,8 +246,10 @@ class FaceRecognitionService:
         if embeddings:
             matrix = np.stack(embeddings).astype(np.float32)
             self._build_faiss_index(matrix)
+            self._build_gpu_embedding_matrix(matrix)
         else:
             self._index = None
+            self._torch_embeddings = None
 
         status = "success" if embeddings else "empty"
         db.add(
@@ -216,14 +272,24 @@ class FaceRecognitionService:
         }
 
     def recognize_face(self, face_image: np.ndarray) -> tuple[int | None, str | None, float, Any | None]:
-        if self._index is None or not self._index_to_person_id:
+        if not self._index_to_person_id:
             return None, None, 0.0, None
 
         emb, face = self.extract_embedding(face_image)
         if emb is None:
             return None, None, 0.0, None
 
-        if self._faiss is None:
+        if self._gpu_available and self._torch_embeddings is not None:
+            person_id, score = self._search_with_torch_gpu(emb)
+            if person_id is None or score <= settings.recognition_threshold:
+                return None, None, score, face
+            return person_id, self._person_name_cache.get(person_id), score, face
+
+        if settings.gpu_strict_mode and self._gpu_available:
+            logger.error("GPU strict mode blocked CPU similarity search fallback")
+            return None, None, 0.0, face
+
+        if self._faiss is None or self._index is None:
             # Fallback path when FAISS is unavailable.
             best_person = None
             best_score = -1.0
@@ -287,8 +353,12 @@ class FaceRecognitionService:
             self._embeddings_cache = {int(k): v for k, v in payload.get("embeddings_cache", {}).items()}
             self._person_name_cache = {int(k): v for k, v in payload.get("person_name_cache", {}).items()}
 
-            vectors = [np.array(v, dtype=np.float32) for _, v in sorted(self._embeddings_cache.items())]
+            valid_person_ids = [person_id for person_id in self._index_to_person_id if person_id in self._embeddings_cache]
+            self._index_to_person_id = valid_person_ids
+            vectors = [np.array(self._embeddings_cache[person_id], dtype=np.float32) for person_id in self._index_to_person_id]
             if vectors:
-                self._build_faiss_index(np.stack(vectors).astype(np.float32))
+                matrix = np.stack(vectors).astype(np.float32)
+                self._build_faiss_index(matrix)
+                self._build_gpu_embedding_matrix(matrix)
         except Exception as exc:
             logger.warning("Failed to load embedding cache: %s", exc)
