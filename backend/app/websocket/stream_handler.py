@@ -2,7 +2,8 @@ import base64
 import binascii
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
+from pathlib import Path
 from time import perf_counter
 
 import cv2
@@ -10,13 +11,17 @@ import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
+from app.api.deps import authenticate_access_token
+from app.config import get_settings
 from app.database import SessionLocal
 from app.services.video_ingestion import VideoIngestionService
+from app.utils.file_storage import VIDEO_UPLOADS_ROOT
 from app.utils.image_utils import crop_face
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+settings = get_settings()
 
 
 def _decode_data_url_image(data_url: str) -> np.ndarray | None:
@@ -74,7 +79,7 @@ async def _process_frame(
         primary = faces_payload[0] if faces_payload else None
         payload = {
             "type": "recognition",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "person_id": primary.get("person_id") if primary else None,
             "name": primary.get("name") if primary else None,
             "confidence": float(primary.get("confidence") or 0.0) if primary else 0.0,
@@ -94,6 +99,18 @@ async def _process_frame(
 
 @router.websocket("/ws/process")
 async def process_stream_socket(websocket: WebSocket) -> None:
+    token = websocket.query_params.get("token") or websocket.cookies.get("access_token")
+    if not token:
+        await websocket.close(code=1008)
+        return
+
+    async with SessionLocal() as auth_db:
+        try:
+            await authenticate_access_token(token, auth_db)
+        except Exception:
+            await websocket.close(code=1008)
+            return
+
     await websocket.accept()
     try:
         config = await websocket.receive_json()
@@ -104,10 +121,17 @@ async def process_stream_socket(websocket: WebSocket) -> None:
     source_type = config.get("source_type", "webcam")
     source_path = config.get("source_path")
 
-    from app.main import app
+    face_service = websocket.app.state.face_service
+    attendance_service = websocket.app.state.attendance_service
 
-    face_service = app.state.face_service
-    attendance_service = app.state.attendance_service
+    if source_type == "file" and source_path:
+        resolved_source = Path(source_path).resolve()
+        if not resolved_source.is_relative_to(VIDEO_UPLOADS_ROOT.resolve()):
+            await websocket.send_json({"type": "error", "message": "Invalid source path"})
+            await websocket.close(code=1008)
+            return
+        source_path = str(resolved_source)
+
     ingestion = VideoIngestionService(source_type=source_type, source_path=source_path)
 
     async def on_frame(frame) -> None:
@@ -121,9 +145,15 @@ async def process_stream_socket(websocket: WebSocket) -> None:
                 if msg_type == "stop":
                     break
                 if msg_type != "frame":
+                    await websocket.send_json({"type": "error", "message": f"Unsupported message type: {msg_type}"})
                     continue
 
-                frame = _decode_data_url_image(message.get("image", ""))
+                raw_image = message.get("image", "")
+                if isinstance(raw_image, str) and len(raw_image.encode("utf-8")) > settings.max_ws_frame_bytes:
+                    await websocket.send_json({"type": "error", "message": "Frame payload too large"})
+                    continue
+
+                frame = _decode_data_url_image(raw_image)
                 if frame is None:
                     await websocket.send_json({"type": "error", "message": "Invalid webcam frame payload"})
                     continue

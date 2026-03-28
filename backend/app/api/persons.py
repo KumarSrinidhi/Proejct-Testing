@@ -13,12 +13,24 @@ from app.database import get_db
 from app.models.attendance import Attendance
 from app.models.person import Person, PersonImage
 from app.schemas.person import PersonCreate, PersonDetail, PersonImageRead, PersonRead, PersonUpdate
-from app.utils.file_storage import save_person_image
+from app.utils.file_storage import PERSON_IMAGES_ROOT, save_person_image
 from app.utils.image_utils import bytes_to_cv2_image
+from app.config import get_settings
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["persons"])
+settings = get_settings()
+
+
+def _is_supported_image_bytes(payload: bytes) -> bool:
+    # JPEG
+    if len(payload) >= 3 and payload[:3] == b"\xff\xd8\xff":
+        return True
+    # PNG
+    if len(payload) >= 8 and payload[:8] == b"\x89PNG\r\n\x1a\n":
+        return True
+    return False
 
 
 @router.post("/persons", response_model=PersonRead)
@@ -142,7 +154,14 @@ async def upload_person_images(
                 results.append({"filename": upload.filename, "status": "failed", "reason": "Invalid file type"})
                 continue
 
-            payload = await upload.read()
+            payload = await upload.read(settings.max_image_upload_bytes + 1)
+            if len(payload) > settings.max_image_upload_bytes:
+                results.append({"filename": upload.filename, "status": "failed", "reason": "Image too large"})
+                continue
+            if not _is_supported_image_bytes(payload):
+                results.append({"filename": upload.filename, "status": "failed", "reason": "Invalid image content"})
+                continue
+
             image = bytes_to_cv2_image(payload)
             if image is None:
                 results.append({"filename": upload.filename, "status": "failed", "reason": "Unreadable image"})
@@ -203,17 +222,26 @@ async def preview_image(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
 
     path = Path(image.image_path)
-    if not path.exists() or not path.is_file():
+    allowed_root = PERSON_IMAGES_ROOT.resolve()
+    try:
+        resolved_path = path.resolve()
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image path")
+
+    if not resolved_path.is_relative_to(allowed_root):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Image path outside allowed directory")
+
+    if not resolved_path.exists() or not resolved_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found on disk")
 
-    suffix = path.suffix.lower()
+    suffix = resolved_path.suffix.lower()
     media_type = "image/jpeg"
     if suffix == ".png":
         media_type = "image/png"
     elif suffix in {".jpg", ".jpeg"}:
         media_type = "image/jpeg"
 
-    return FileResponse(path=str(path), media_type=media_type)
+    return FileResponse(path=str(resolved_path), media_type=media_type)
 
 
 @router.delete("/images/{image_id}")

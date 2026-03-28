@@ -1,6 +1,6 @@
 import csv
 import io
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -21,6 +21,8 @@ analytics_service = AnalyticsService()
 
 @router.get("", response_model=list[AttendanceRead])
 async def list_attendance(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=500),
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     person_id: int | None = Query(default=None),
@@ -32,7 +34,6 @@ async def list_attendance(
         select(Attendance, Person.name, Person.department)
         .join(Person, Person.id == Attendance.person_id)
         .order_by(Attendance.timestamp.desc())
-        .limit(1000)
     )
 
     filters = []
@@ -48,7 +49,7 @@ async def list_attendance(
     if filters:
         query = query.where(and_(*filters))
 
-    result = await db.execute(query)
+    result = await db.execute(query.offset((page - 1) * page_size).limit(page_size))
     rows = result.all()
     return [
         AttendanceRead(
@@ -69,8 +70,8 @@ async def get_today_summary(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> AttendanceTodaySummary:
-    now = datetime.utcnow()
-    day_start = datetime(now.year, now.month, now.day)
+    now = datetime.now(UTC)
+    day_start = datetime(now.year, now.month, now.day, tzinfo=UTC)
 
     total_result = await db.execute(select(func.count(Attendance.id)).where(Attendance.timestamp >= day_start))
     unique_result = await db.execute(

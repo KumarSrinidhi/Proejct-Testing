@@ -1,5 +1,5 @@
-import { Component } from "react";
-import { NavLink, Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { Component, useEffect, useState } from "react";
+import { NavLink, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import HeatmapPage from "./pages/HeatmapPage";
 import TrendsPage from "./pages/TrendsPage";
@@ -8,6 +8,7 @@ import AttendancePage from "./pages/AttendancePage";
 import LiveRecognitionPage from "./pages/LiveRecognitionPage";
 import TrainingPage from "./pages/TrainingPage";
 import Login from "./pages/Login";
+import { authApi } from "./services/api";
 
 const links = [
   { to: "/", label: "Dashboard" },
@@ -80,12 +81,13 @@ function Layout() {
           ))}
           <button
             className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm"
-            onClick={() => {
-              // Security: Clear auth tokens on logout
-              // Note: These are stored in localStorage for demo purposes.
-              // For production, use httpOnly cookies instead (not accessible to JavaScript).
-              localStorage.removeItem("access_token");
-              localStorage.removeItem("refresh_token");
+            onClick={async () => {
+              try {
+                await authApi.logout();
+              } catch (_err) {
+                // Best effort logout.
+              }
+              sessionStorage.removeItem("is_authed");
               window.location.href = "/login";
             }}
           >
@@ -101,12 +103,41 @@ function Layout() {
 }
 
 export default function App() {
-  // Security: Check if user is authenticated
-  // Production recommendations:
-  // 1. Move tokens to httpOnly cookies (more secure than localStorage)
-  // 2. Validate token JWT signature on initial load
-  // 3. Implement token refresh logic with proper rotation
-  const isAuthed = Boolean(localStorage.getItem("access_token"));
+  const location = useLocation();
+  const [isAuthed, setIsAuthed] = useState(sessionStorage.getItem("is_authed") === "1");
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    if (location.pathname === "/login") {
+      setCheckingAuth(false);
+      return;
+    }
+
+    let active = true;
+    authApi
+      .me()
+      .then(() => {
+        if (!active) return;
+        sessionStorage.setItem("is_authed", "1");
+        setIsAuthed(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        sessionStorage.removeItem("is_authed");
+        setIsAuthed(false);
+      })
+      .finally(() => {
+        if (!active) return;
+        setCheckingAuth(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [location.pathname]);
+
+  if (checkingAuth) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
 
   return (
     <Routes>

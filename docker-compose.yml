@@ -8,10 +8,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///./attendance.db
-      - SECRET_KEY=change-me
-      - CUDA_ENABLED=false
-      - GPU_STRICT_MODE=false
+      - DATABASE_URL=${DATABASE_URL:-sqlite+aiosqlite:///./attendance.db}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-dev}
+      - CUDA_ENABLED=${CUDA_ENABLED:-false}
+      - GPU_STRICT_MODE=${GPU_STRICT_MODE:-false}
     volumes:
       - ./backend:/app
       - ./data:/app/data

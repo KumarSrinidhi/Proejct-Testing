@@ -2,22 +2,16 @@ import { useState } from "react";
 import { authApi } from "../services/api";
 
 export default function Login() {
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   const submit = async (event) => {
     event.preventDefault();
     setError("");
     try {
-      const { data } = await authApi.login(username, password);
-      // Security Note: Tokens are stored in localStorage for demo purposes.
-      // For production use, implement one of these secure alternatives:
-      // 1. Store tokens in httpOnly cookies (not accessible to JavaScript, prevents XSS access)
-      // 2. Use sessionStorage with additional CSRF protection
-      // 3. Implement a secure backend session mechanism
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
+      await authApi.login(username, password);
+      sessionStorage.setItem("is_authed", "1");
       window.location.href = "/";
     } catch (err) {
       // Security: Only show generic error to prevent user enumeration

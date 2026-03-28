@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from sqlalchemy import Float, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +15,7 @@ class AnalyticsService:
             select(func.strftime("%w", Attendance.timestamp).label("weekday"), func.count(Attendance.id)).group_by("weekday")
         )
 
-        today = datetime.utcnow().date()
+        today = datetime.now(UTC).date()
         week_start = datetime.combine(today - timedelta(days=6), datetime.min.time())
         month_start = datetime.combine(today - timedelta(days=28), datetime.min.time())
 

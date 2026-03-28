@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -52,12 +53,17 @@ class Settings(BaseSettings):
     login_rate_limit_window_seconds: int = 300
 
     # CORS settings (specify exact origins, not wildcards)
-    cors_origins: str = ""
+    cors_origins: str = Field(default="", alias="CORS_ALLOWED_ORIGINS")
     cors_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     # Admin credentials (change in production)
     admin_username: str = "admin"
-    admin_password: str = "admin123"
+    admin_password: str = ""
+
+    # Upload limits
+    max_image_upload_bytes: int = 5 * 1024 * 1024
+    max_video_upload_bytes: int = 100 * 1024 * 1024
+    max_ws_frame_bytes: int = 2 * 1024 * 1024
 
     @property
     def is_production(self) -> bool:

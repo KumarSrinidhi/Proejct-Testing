@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import attendance, auth, persons, training, video
 from app.database import Base, SessionLocal, engine
+from app.models import *  # noqa: F401,F403 - ensure all model metadata is loaded
 from app.models.user import User
 from app.services.attendance_service import AttendanceService
 from app.services.face_recognition import FaceRecognitionService
@@ -69,6 +70,9 @@ async def lifespan(app: FastAPI):
 
         # Ensure a default admin exists for first-time setup
         try:
+            if settings.is_production and settings.admin_password in {"", "admin123"}:
+                raise RuntimeError("ADMIN_PASSWORD must be set to a strong value in production")
+
             async with SessionLocal() as db:
                 result = await db.execute(
                     select(User).where(User.username == settings.admin_username)

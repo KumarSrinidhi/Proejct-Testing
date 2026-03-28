@@ -2,6 +2,7 @@ import json
 import logging
 from pathlib import Path
 from time import perf_counter
+from threading import RLock
 from typing import Any
 
 import numpy as np
@@ -32,6 +33,7 @@ class FaceRecognitionService:
         self._index_to_person_id: list[int] = []
         self._person_name_cache: dict[int, str] = {}
         self._embeddings_cache: dict[int, list[float]] = {}
+        self._state_lock = RLock()
         self._model_dir = Path("data/models")
         self._model_dir.mkdir(parents=True, exist_ok=True)
 
@@ -225,55 +227,58 @@ class FaceRecognitionService:
         return self._index_to_person_id[idx], score
 
     def _search_embedding(self, emb: np.ndarray) -> tuple[int | None, str | None, float]:
-        if self._gpu_available and self._torch_embeddings is not None:
-            person_id, score = self._search_with_torch_gpu(emb)
-            if person_id is None or score <= settings.recognition_threshold:
+        with self._state_lock:
+            if self._gpu_available and self._torch_embeddings is not None:
+                person_id, score = self._search_with_torch_gpu(emb)
+                if person_id is None or score <= settings.recognition_threshold:
+                    return None, None, score
+                return person_id, self._person_name_cache.get(person_id), score
+
+            if settings.gpu_strict_mode and self._gpu_available:
+                logger.error("GPU strict mode blocked CPU similarity search fallback")
+                return None, None, 0.0
+
+            if self._faiss is None or self._index is None:
+                best_person = None
+                best_score = -1.0
+                for person_id, vector in self._embeddings_cache.items():
+                    candidate = np.array(vector, dtype=np.float32)
+                    score = float(np.dot(emb, candidate))
+                    if score > best_score:
+                        best_person = person_id
+                        best_score = score
+                if best_person is None or best_score <= settings.recognition_threshold:
+                    return None, None, 0.0
+                return best_person, self._person_name_cache.get(best_person), best_score
+
+            query = emb.reshape(1, -1).astype(np.float32)
+            scores, indices = self._index.search(query, k=1)
+            score = float(scores[0][0])
+            idx = int(indices[0][0])
+            if idx < 0 or idx >= len(self._index_to_person_id):
+                return None, None, 0.0
+
+            person_id = self._index_to_person_id[idx]
+            if score <= settings.recognition_threshold:
                 return None, None, score
             return person_id, self._person_name_cache.get(person_id), score
-
-        if settings.gpu_strict_mode and self._gpu_available:
-            logger.error("GPU strict mode blocked CPU similarity search fallback")
-            return None, None, 0.0
-
-        if self._faiss is None or self._index is None:
-            best_person = None
-            best_score = -1.0
-            for person_id, vector in self._embeddings_cache.items():
-                candidate = np.array(vector, dtype=np.float32)
-                score = float(np.dot(emb, candidate))
-                if score > best_score:
-                    best_person = person_id
-                    best_score = score
-            if best_person is None or best_score <= settings.recognition_threshold:
-                return None, None, 0.0
-            return best_person, self._person_name_cache.get(best_person), best_score
-
-        query = emb.reshape(1, -1).astype(np.float32)
-        scores, indices = self._index.search(query, k=1)
-        score = float(scores[0][0])
-        idx = int(indices[0][0])
-        if idx < 0 or idx >= len(self._index_to_person_id):
-            return None, None, 0.0
-
-        person_id = self._index_to_person_id[idx]
-        if score <= settings.recognition_threshold:
-            return None, None, score
-        return person_id, self._person_name_cache.get(person_id), score
 
     async def rebuild_index(self, db: AsyncSession) -> dict[str, int]:
         start = perf_counter()
         total_images = 0
         failed_images = 0
-        self._index_to_person_id = []
-        self._person_name_cache = {}
-        self._embeddings_cache = {}
+        with self._state_lock:
+            self._index_to_person_id = []
+            self._person_name_cache = {}
+            self._embeddings_cache = {}
 
         result = await db.execute(select(Person).where(Person.is_active.is_(True)))
         persons = result.scalars().all()
 
         embeddings: list[np.ndarray] = []
         for person in persons:
-            self._person_name_cache[person.id] = person.name
+            with self._state_lock:
+                self._person_name_cache[person.id] = person.name
             image_result = await db.execute(select(PersonImage).where(PersonImage.person_id == person.id))
             images = image_result.scalars().all()
             total_images += len(images)
@@ -297,8 +302,9 @@ class FaceRecognitionService:
                 continue
 
             embeddings.append(mean_emb)
-            self._index_to_person_id.append(person.id)
-            self._embeddings_cache[person.id] = mean_emb.tolist()
+            with self._state_lock:
+                self._index_to_person_id.append(person.id)
+                self._embeddings_cache[person.id] = mean_emb.tolist()
 
         await db.commit()
         if embeddings:
@@ -306,8 +312,9 @@ class FaceRecognitionService:
             self._build_faiss_index(matrix)
             self._build_gpu_embedding_matrix(matrix)
         else:
-            self._index = None
-            self._torch_embeddings = None
+            with self._state_lock:
+                self._index = None
+                self._torch_embeddings = None
 
         status = "success" if embeddings else "empty"
         db.add(
@@ -330,7 +337,9 @@ class FaceRecognitionService:
         }
 
     def recognize_face(self, face_image: np.ndarray) -> tuple[int | None, str | None, float, Any | None]:
-        if not self._index_to_person_id:
+        with self._state_lock:
+            has_index = bool(self._index_to_person_id)
+        if not has_index:
             return None, None, 0.0, None
 
         emb, face = self.extract_embedding(face_image)
@@ -342,7 +351,9 @@ class FaceRecognitionService:
         return person_id, name, score, face
 
     def recognize_faces(self, frame: np.ndarray) -> list[dict[str, Any]]:
-        if not self._index_to_person_id:
+        with self._state_lock:
+            has_index = bool(self._index_to_person_id)
+        if not has_index:
             return []
 
         faces = self._extract_faces(frame)
@@ -381,11 +392,12 @@ class FaceRecognitionService:
     def _save_cache_to_disk(self) -> None:
         try:
             cache_path = self._model_dir / "embeddings_cache.json"
-            payload = {
-                "index_to_person_id": self._index_to_person_id,
-                "embeddings_cache": self._embeddings_cache,
-                "person_name_cache": self._person_name_cache,
-            }
+            with self._state_lock:
+                payload = {
+                    "index_to_person_id": self._index_to_person_id,
+                    "embeddings_cache": self._embeddings_cache,
+                    "person_name_cache": self._person_name_cache,
+                }
             cache_path.write_text(json.dumps(payload), encoding="utf-8")
         except Exception as exc:
             logger.warning("Failed to save embedding cache: %s", exc)
@@ -397,13 +409,15 @@ class FaceRecognitionService:
 
         try:
             payload = json.loads(cache_path.read_text(encoding="utf-8"))
-            self._index_to_person_id = [int(x) for x in payload.get("index_to_person_id", [])]
-            self._embeddings_cache = {int(k): v for k, v in payload.get("embeddings_cache", {}).items()}
-            self._person_name_cache = {int(k): v for k, v in payload.get("person_name_cache", {}).items()}
+            with self._state_lock:
+                self._index_to_person_id = [int(x) for x in payload.get("index_to_person_id", [])]
+                self._embeddings_cache = {int(k): v for k, v in payload.get("embeddings_cache", {}).items()}
+                self._person_name_cache = {int(k): v for k, v in payload.get("person_name_cache", {}).items()}
 
-            valid_person_ids = [person_id for person_id in self._index_to_person_id if person_id in self._embeddings_cache]
-            self._index_to_person_id = valid_person_ids
-            vectors = [np.array(self._embeddings_cache[person_id], dtype=np.float32) for person_id in self._index_to_person_id]
+            with self._state_lock:
+                valid_person_ids = [person_id for person_id in self._index_to_person_id if person_id in self._embeddings_cache]
+                self._index_to_person_id = valid_person_ids
+                vectors = [np.array(self._embeddings_cache[person_id], dtype=np.float32) for person_id in self._index_to_person_id]
             if vectors:
                 matrix = np.stack(vectors).astype(np.float32)
                 self._build_faiss_index(matrix)

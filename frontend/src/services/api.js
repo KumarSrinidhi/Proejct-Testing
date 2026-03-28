@@ -14,15 +14,7 @@ const apiBaseURL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const api = axios.create({
   baseURL: apiBaseURL,
-});
-
-// Security: Add JWT token to all requests
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("access_token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
+  withCredentials: true,
 });
 
 // Handle token refresh on 401 (optional enhancement)
@@ -30,28 +22,32 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const requestUrl = String(originalRequest?.url || "");
+    const isAuthRoute = requestUrl.includes("/api/auth/login")
+      || requestUrl.includes("/api/auth/refresh")
+      || requestUrl.includes("/api/auth/me")
+      || requestUrl.includes("/api/auth/logout");
+
+    // Never run refresh/redirect logic for auth endpoints themselves.
+    if (isAuthRoute) {
+      return Promise.reject(error);
+    }
     
     // If 401 and not already retrying, attempt to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const refreshToken = localStorage.getItem("refresh_token");
-        if (!refreshToken) {
-          throw new Error("No refresh token available");
-        }
-        
-        const response = await axios.post(`${apiBaseURL}/api/auth/refresh`, {
-          refresh_token: refreshToken,
-        });
-        
-        localStorage.setItem("access_token", response.data.access_token);
-        api.defaults.headers.common.Authorization = `Bearer ${response.data.access_token}`;
+        await axios.post(
+          `${apiBaseURL}/api/auth/refresh`,
+          {},
+          { withCredentials: true }
+        );
         return api(originalRequest);
       } catch (refreshError) {
-        // Refresh failed, clear tokens and redirect to login
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-        window.location.href = "/login";
+        // Refresh failed, redirect to login only if we are not already there.
+        if (window.location.pathname !== "/login") {
+          window.location.href = "/login";
+        }
         return Promise.reject(refreshError);
       }
     }
@@ -62,6 +58,8 @@ api.interceptors.response.use(
 
 export const authApi = {
   login: (username, password) => api.post("/api/auth/login", { username, password }),
+  logout: () => api.post("/api/auth/logout"),
+  me: () => api.get("/api/auth/me"),
 };
 
 export const personApi = {

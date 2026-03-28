@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,12 +14,11 @@ router = APIRouter(prefix="/api/train", tags=["training"])
 
 @router.post("", response_model=TrainingSummary)
 async def trigger_training(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> TrainingSummary:
-    from app.main import app
-
-    summary = await app.state.face_service.rebuild_index(db)
+    summary = await request.app.state.face_service.rebuild_index(db)
     return TrainingSummary(**summary, status="success")
 
 

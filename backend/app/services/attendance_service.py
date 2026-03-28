@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 import logging
 
 import numpy as np
@@ -17,6 +17,12 @@ class AttendanceService:
     def __init__(self) -> None:
         self.last_marked: dict[int, datetime] = {}
 
+    def _prune_last_marked(self, now: datetime) -> None:
+        cutoff = now - timedelta(seconds=settings.attendance_cooldown_seconds * 2)
+        stale_ids = [person_id for person_id, marked_at in self.last_marked.items() if marked_at < cutoff]
+        for person_id in stale_ids:
+            self.last_marked.pop(person_id, None)
+
     async def mark_attendance(
         self,
         db: AsyncSession,
@@ -24,7 +30,8 @@ class AttendanceService:
         confidence: float,
         cropped_face: np.ndarray,
     ) -> tuple[bool, str]:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
+        self._prune_last_marked(now)
 
         if confidence <= settings.recognition_threshold:
             return False, "Confidence too low"

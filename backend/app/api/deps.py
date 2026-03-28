@@ -1,31 +1,24 @@
-from collections import defaultdict, deque
-from datetime import datetime, timedelta
-from fastapi import Depends, Header, HTTPException, status
-from sqlalchemy import select
+from datetime import UTC, datetime, timedelta
+
+from fastapi import Cookie, Depends, Header, HTTPException, status
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.login_attempt import LoginAttempt
 from app.models.user import User
 from app.utils.security import decode_token, TokenError
 from app.config import get_settings
 
 
 settings = get_settings()
-_login_attempts: dict[str, deque[datetime]] = defaultdict(deque)
 
 
-async def get_current_user(
-    authorization: str = Header(default=""),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
-
-    token = authorization.removeprefix("Bearer ").strip()
+async def authenticate_access_token(token: str, db: AsyncSession) -> User:
     try:
         subject = decode_token(token, expected_type="access")
     except TokenError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
 
     result = await db.execute(select(User).where(User.username == subject))
     user = result.scalar_one_or_none()
@@ -34,23 +27,52 @@ async def get_current_user(
     return user
 
 
+async def get_current_user(
+    authorization: str = Header(default=""),
+    access_token: str | None = Cookie(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    token = ""
+    if authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip()
+    elif access_token:
+        token = access_token
+
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+
+    return await authenticate_access_token(token, db)
+
+
 async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
 
 
-def check_login_rate_limit(username: str) -> None:
-    now = datetime.utcnow()
-    queue = _login_attempts[username]
+async def check_login_rate_limit(username: str, db: AsyncSession) -> None:
+    now = datetime.now(UTC)
     window_start = now - timedelta(seconds=settings.login_rate_limit_window_seconds)
 
-    while queue and queue[0] < window_start:
-        queue.popleft()
+    await db.execute(
+        delete(LoginAttempt).where(
+            LoginAttempt.username == username,
+            LoginAttempt.attempted_at < window_start,
+        )
+    )
 
-    if len(queue) >= settings.login_rate_limit_attempts:
+    count_result = await db.execute(
+        select(func.count(LoginAttempt.id)).where(
+            LoginAttempt.username == username,
+            LoginAttempt.attempted_at >= window_start,
+        )
+    )
+    attempts = int(count_result.scalar() or 0)
+
+    if attempts >= settings.login_rate_limit_attempts:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many login attempts")
 
 
-def record_login_attempt(username: str) -> None:
-    _login_attempts[username].append(datetime.utcnow())
+async def record_login_attempt(username: str, db: AsyncSession) -> None:
+    db.add(LoginAttempt(username=username, attempted_at=datetime.now(UTC)))
+    await db.commit()
