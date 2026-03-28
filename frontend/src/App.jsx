@@ -1,3 +1,4 @@
+import { Component } from "react";
 import { NavLink, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import HeatmapPage from "./pages/HeatmapPage";
@@ -17,6 +18,48 @@ const links = [
   { to: "/live", label: "Live" },
   { to: "/training", label: "Training" },
 ];
+
+/**
+ * Error Boundary component to catch and handle React component errors.
+ * Prevents entire app from crashing if a single component fails.
+ */
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Error caught by error boundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4">
+          <div className="card bg-red-50 border-red-200 max-w-md w-full">
+            <h2 className="text-xl font-bold text-red-900 mb-2">Something went wrong</h2>
+            <p className="text-red-800 mb-4">
+              An unexpected error occurred. Please try refreshing the page.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-red-900 text-white rounded hover:bg-red-800"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function Layout() {
   return (
@@ -38,6 +81,9 @@ function Layout() {
           <button
             className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm"
             onClick={() => {
+              // Security: Clear auth tokens on logout
+              // Note: These are stored in localStorage for demo purposes.
+              // For production, use httpOnly cookies instead (not accessible to JavaScript).
               localStorage.removeItem("access_token");
               localStorage.removeItem("refresh_token");
               window.location.href = "/login";
@@ -47,12 +93,19 @@ function Layout() {
           </button>
         </nav>
       </header>
-      <Outlet />
+      <ErrorBoundary>
+        <Outlet />
+      </ErrorBoundary>
     </div>
   );
 }
 
 export default function App() {
+  // Security: Check if user is authenticated
+  // Production recommendations:
+  // 1. Move tokens to httpOnly cookies (more secure than localStorage)
+  // 2. Validate token JWT signature on initial load
+  // 3. Implement token refresh logic with proper rotation
   const isAuthed = Boolean(localStorage.getItem("access_token"));
 
   return (

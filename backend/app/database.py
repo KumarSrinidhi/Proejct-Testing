@@ -6,8 +6,19 @@ from app.config import get_settings
 
 
 settings = get_settings()
-engine = create_async_engine(settings.database_url, future=True, echo=False)
-SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+# Security: Only enable echo (SQL logs) in development, never in production
+# SQL logs can expose sensitive data like passwords, API keys, etc.
+engine = create_async_engine(
+    settings.database_url, 
+    future=True, 
+    echo=settings.debug  # Only log SQL in debug/development mode
+)
+SessionLocal = async_sessionmaker(
+    bind=engine, 
+    class_=AsyncSession, 
+    expire_on_commit=False
+)
 
 
 class Base(DeclarativeBase):

@@ -3,32 +3,69 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    """
+    Application settings loaded from environment variables.
+    
+    Security Notes:
+    - SECRET_KEY: Must be changed in production. Do not expose in logs.
+    - DATABASE_URL: Should use strong credentials stored in environment variables.
+    - DEBUG: Must be False in production to prevent sensitive data leakage in logs.
+    - CORS_ALLOWED_ORIGINS: Specify exact origins instead of using wildcards.
+    """
+    model_config: SettingsConfigDict = SettingsConfigDict(
+        env_file=".env", 
+        env_file_encoding="utf-8", 
+        extra="ignore"
+    )
 
+    # Application config
     app_name: str = "Face Recognition Attendance System"
     environment: str = "development"
+    debug: bool = False
+
+    # Database (use environment variables for credentials in production)
     database_url: str = "sqlite+aiosqlite:///./attendance.db"
-    secret_key: str = "change-me"
+
+    # Security (CRITICAL: Change in production and never expose in logs)
+    secret_key: str = "change-me-in-production"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
+
+    # Recognition settings
     recognition_threshold: float = 0.6
     face_detection_threshold: float = 0.35
     attendance_cooldown_seconds: int = 300
     frame_process_interval: float = 1.0
+
+    # GPU settings
     cuda_enabled: bool = True
     gpu_strict_mode: bool = False
     insightface_model: str = "buffalo_l"
+
+    # Video settings
     video_source_type: str = "file"
     video_source_path: str = ""
     auto_train_on_upload: bool = False
+
+    # Rate limiting
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 300
+
+    # CORS settings (specify exact origins, not wildcards)
     cors_origins: str = ""
     cors_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+
+    # Admin credentials (change in production)
     admin_username: str = "admin"
     admin_password: str = "admin123"
+
+    @property
+    def is_production(self) -> bool:
+        """Check if running in production environment."""
+        return self.environment.lower() in ("production", "prod")
 
 
 @lru_cache
 def get_settings() -> Settings:
+    """Get cached application settings."""
     return Settings()

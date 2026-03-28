@@ -11,10 +11,16 @@ export default function Login() {
     setError("");
     try {
       const { data } = await authApi.login(username, password);
+      // Security Note: Tokens are stored in localStorage for demo purposes.
+      // For production use, implement one of these secure alternatives:
+      // 1. Store tokens in httpOnly cookies (not accessible to JavaScript, prevents XSS access)
+      // 2. Use sessionStorage with additional CSRF protection
+      // 3. Implement a secure backend session mechanism
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
       window.location.href = "/";
     } catch (err) {
+      // Security: Only show generic error to prevent user enumeration
       setError(err?.response?.data?.detail || "Login failed");
     }
   };
@@ -23,14 +29,26 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <form onSubmit={submit} className="card w-full max-w-sm space-y-4">
         <h1 className="font-display text-2xl">Attendance Login</h1>
-        <input className="w-full border rounded p-2" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <input
+          type="text"
+          placeholder="Username"
+          className="w-full border rounded p-2"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+        />
         <input
           type="password"
+          placeholder="Password"
           className="w-full border rounded p-2"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <button className="w-full bg-accent text-white rounded p-2">Sign In</button>
+        <button 
+          type="submit"
+          className="w-full bg-accent text-white rounded p-2 hover:bg-opacity-90"
+        >
+          Sign In
+        </button>
         {error && <p className="text-red-600 text-sm">{error}</p>}
       </form>
     </div>
