@@ -2,7 +2,7 @@ import csv
 import io
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +11,7 @@ from app.api.deps import require_admin
 from app.database import get_db
 from app.models.attendance import Attendance
 from app.models.person import Person
-from app.schemas.attendance import AttendanceRead, AttendanceTodaySummary
+from app.schemas.attendance import AttendanceRead, AttendanceTodaySummary, AttendanceUpdate
 from app.services.analytics_service import AnalyticsService
 
 
@@ -131,3 +131,36 @@ async def get_trends(
     _: object = Depends(require_admin),
 ) -> dict[str, object]:
     return await analytics_service.get_trends(db)
+
+
+@router.put("/{attendance_id}", response_model=AttendanceRead)
+async def update_attendance(
+    attendance_id: int,
+    payload: AttendanceUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: object = Depends(require_admin),
+) -> AttendanceRead:
+    result = await db.execute(select(Attendance).where(Attendance.id == attendance_id))
+    attendance = result.scalar_one_or_none()
+    if attendance is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attendance record not found")
+
+    attendance.timestamp = payload.timestamp
+    attendance.confidence_score = payload.confidence_score
+    await db.commit()
+    await db.refresh(attendance)
+
+    person_result = await db.execute(select(Person).where(Person.id == attendance.person_id))
+    person = person_result.scalar_one_or_none()
+    if person is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Person not found")
+
+    return AttendanceRead(
+        id=attendance.id,
+        person_id=attendance.person_id,
+        person_name=person.name,
+        department=person.department,
+        timestamp=attendance.timestamp,
+        confidence_score=attendance.confidence_score,
+        cropped_face_path=attendance.cropped_face_path,
+    )

@@ -24,10 +24,12 @@ export const personApi = {
   uploadImages: (id, formData) => api.post(`/api/persons/${id}/images`, formData),
   listImages: (id) => api.get(`/api/persons/${id}/images`),
   previewImage: (imageId) => api.get(`/api/images/${imageId}/preview`, { responseType: "blob" }),
+  deleteImage: (imageId) => api.delete(`/api/images/${imageId}`),
 };
 
 export const attendanceApi = {
   list: (params = {}) => api.get("/api/attendance", { params }),
+  update: (id, payload) => api.put(`/api/attendance/${id}`, payload),
   today: () => api.get("/api/attendance/today"),
   heatmap: () => api.get("/api/attendance/heatmap"),
   trends: () => api.get("/api/attendance/trends"),

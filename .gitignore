@@ -1,0 +1,65 @@
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Repository-local scratch files
+allfiles.txt
+
+# Python backend
+.venv/
+venv/
+**/.venv/
+**/venv/
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/.coverage
+backend/coverage.xml
+backend/htmlcov/
+
+# Python environment and secrets
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# SQLite and local DB artifacts
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+*.db
+*.sqlite
+*.sqlite3
+
+# Runtime data (uploads, crops, model caches)
+data/uploads/
+data/models/
+backend/data/
+backend/data/uploads/
+backend/data/models/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Frontend env files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Large temporary outputs
+*.tmp

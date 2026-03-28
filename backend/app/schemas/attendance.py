@@ -16,3 +16,8 @@ class AttendanceTodaySummary(BaseModel):
     total_today: int
     unique_today: int
     avg_confidence: float
+
+
+class AttendanceUpdate(BaseModel):
+    timestamp: datetime
+    confidence_score: float

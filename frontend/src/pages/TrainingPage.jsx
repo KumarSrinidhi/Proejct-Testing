@@ -5,13 +5,12 @@ export default function TrainingPage() {
   const [status, setStatus] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selectedLog, setSelectedLog] = useState(null);
-  const [editStatusValue, setEditStatusValue] = useState("");
   const [message, setMessage] = useState("");
   const [persons, setPersons] = useState([]);
   const [selectedPersonId, setSelectedPersonId] = useState(null);
   const [personImages, setPersonImages] = useState([]);
   const [loadingImages, setLoadingImages] = useState(false);
+  const [deletingImageId, setDeletingImageId] = useState(null);
 
   const load = async () => {
     const [statusRes, logsRes, personsRes] = await Promise.all([trainingApi.status(), trainingApi.logs(), personApi.list()]);
@@ -42,27 +41,18 @@ export default function TrainingPage() {
     }
   };
 
-  const viewLog = async (logId) => {
+  const deletePersonImage = async (imageId) => {
+    if (!imageId) return;
     setMessage("");
+    setDeletingImageId(imageId);
     try {
-      const { data } = await trainingApi.getLog(logId);
-      setSelectedLog(data);
-      setEditStatusValue(data.status || "");
+      await personApi.deleteImage(imageId);
+      setMessage("Image deleted successfully.");
+      await loadPersonImages(selectedPersonId);
     } catch (error) {
-      setMessage(error?.response?.data?.detail || "Failed to load training log.");
-    }
-  };
-
-  const saveLogStatus = async () => {
-    if (!selectedLog) return;
-    setMessage("");
-    try {
-      const { data } = await trainingApi.updateLog(selectedLog.id, { status: editStatusValue });
-      setSelectedLog(data);
-      await load();
-      setMessage("Training log updated.");
-    } catch (error) {
-      setMessage(error?.response?.data?.detail || "Failed to update training log.");
+      setMessage(error?.response?.data?.detail || "Failed to delete image.");
+    } finally {
+      setDeletingImageId(null);
     }
   };
 
@@ -141,39 +131,10 @@ export default function TrainingPage() {
               <div>{new Date(log.timestamp).toLocaleString()}</div>
               <div>Status: {log.status}</div>
               <div>Persons: {log.total_persons} | Images: {log.total_images}</div>
-              <button
-                onClick={() => viewLog(log.id)}
-                className="mt-2 rounded bg-ink text-white px-3 py-1"
-              >
-                View / Edit
-              </button>
             </div>
           ))}
         </div>
       </div>
-
-      {selectedLog ? (
-        <div className="card">
-          <h4 className="font-display mb-2">Selected Training Log</h4>
-          <div className="text-sm space-y-1 mb-3">
-            <div>ID: {selectedLog.id}</div>
-            <div>Timestamp: {new Date(selectedLog.timestamp).toLocaleString()}</div>
-            <div>Total Persons: {selectedLog.total_persons}</div>
-            <div>Total Images: {selectedLog.total_images}</div>
-          </div>
-          <label className="text-sm flex flex-col gap-2">
-            Edit Status
-            <input
-              value={editStatusValue}
-              onChange={(e) => setEditStatusValue(e.target.value)}
-              className="border rounded p-2"
-            />
-          </label>
-          <button onClick={saveLogStatus} className="mt-3 rounded bg-accent text-white px-4 py-2">
-            Save Changes
-          </button>
-        </div>
-      ) : null}
 
       <div className="card">
         <h4 className="font-display mb-2">Person Image Viewer</h4>
@@ -220,6 +181,14 @@ export default function TrainingPage() {
               )}
               <div className="text-xs mt-2">Image ID: {img.id}</div>
               <div className="text-xs text-slate-600">{new Date(img.uploaded_at).toLocaleString()}</div>
+              <button
+                type="button"
+                className="mt-2 rounded bg-red-600 text-white px-2 py-1 text-xs"
+                onClick={() => deletePersonImage(img.id)}
+                disabled={deletingImageId === img.id}
+              >
+                {deletingImageId === img.id ? "Deleting..." : "Delete"}
+              </button>
             </div>
           ))}
         </div>
