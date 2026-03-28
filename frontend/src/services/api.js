@@ -30,6 +30,7 @@ export const personApi = {
 export const attendanceApi = {
   list: (params = {}) => api.get("/api/attendance", { params }),
   update: (id, payload) => api.put(`/api/attendance/${id}`, payload),
+  remove: (id) => api.delete(`/api/attendance/${id}`),
   today: () => api.get("/api/attendance/today"),
   heatmap: () => api.get("/api/attendance/heatmap"),
   trends: () => api.get("/api/attendance/trends"),

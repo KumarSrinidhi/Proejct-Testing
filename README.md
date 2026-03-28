@@ -21,7 +21,36 @@ A high-accuracy attendance platform using FastAPI, InsightFace (buffalo_l), FAIS
 - frontend: React app with analytics and live view
 - data: uploads and model index/cache files
 
+## Installation Preflight
+
+Run these checks before first install:
+
+```bash
+python3 --version
+node --version
+npm --version
+```
+
+Recommended versions:
+
+- Python 3.11 or 3.12
+- Node 20+
+- npm 10+
+
+Linux runtime packages required for OpenCV:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libglib2.0-0 libgl1
+```
+
 ## Backend Setup
+
+Prerequisites:
+
+- Python 3.11 or 3.12
+- `pip` and `venv`
+- Linux packages for OpenCV runtime: `libglib2.0-0` and `libgl1` (or distro equivalent)
 
 1. Create and activate a Python virtual environment.
 2. Create env file.
@@ -36,7 +65,13 @@ python3 -m venv .venv
 source .venv/bin/activate
 cp .env.example .env
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+If pip is old, upgrade installer tooling first:
+
+```bash
+pip install --upgrade pip setuptools wheel
 ```
 
 Windows (PowerShell):
@@ -68,6 +103,13 @@ You can override the bootstrap admin account in `.env` using:
 
 ## Frontend Setup
 
+If this is a fresh machine, verify Node and npm first:
+
+```bash
+node -v
+npm -v
+```
+
 ```bash
 cd frontend
 npm install
@@ -85,7 +127,8 @@ docker compose up --build
 ## CUDA Notes
 
 - InsightFace and FAISS are configured to auto-detect CUDA.
-- `GPU_STRICT_MODE=true` enforces GPU-only heavy processing and blocks CPU fallback.
+- Default setup is CPU-safe: `GPU_STRICT_MODE=false`.
+- Set `GPU_STRICT_MODE=true` only when CUDA is available and correctly configured.
 - Runtime uses:
   - ctx_id=0 when torch.cuda.is_available(), else -1
   - FAISS GPU index when available
@@ -115,6 +158,8 @@ See backend/.env.example for full configuration including:
 - INSIGHTFACE_MODEL
 - VIDEO_SOURCE_TYPE
 - VIDEO_SOURCE_PATH
+- CORS_ORIGINS
+- CORS_ORIGIN_REGEX
 - ADMIN_USERNAME
 - ADMIN_PASSWORD
 
@@ -129,6 +174,53 @@ Unit tests included for:
 
 - Face recognition embedding averaging and threshold behavior
 - Attendance cooldown and successful marking
+
+## Troubleshooting
+
+If backend startup fails with:
+
+- `ImportError: email-validator is not installed`
+
+Run:
+
+```bash
+cd backend
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+If login fails with browser CORS errors:
+
+- Keep frontend on http://localhost:5173, or
+- Set `CORS_ORIGINS` in `backend/.env` with comma-separated frontend origins.
+
+Example:
+
+```bash
+CORS_ORIGINS=http://localhost:5173,http://localhost:4173,http://127.0.0.1:4173
+```
+
+If browser webcam mode does not start:
+
+- Ensure camera permission is granted in the browser.
+- Use localhost or HTTPS (many browsers block camera access on insecure remote HTTP origins).
+- Confirm no other app is exclusively locking the camera device.
+
+If `pip install -r requirements.txt` fails around `insightface`, `onnxruntime`, `faiss-cpu`, or `torch`:
+
+- Upgrade pip/setuptools/wheel.
+- Recreate `.venv`.
+- Retry on Python 3.11 if your platform wheel support for 3.12 is incomplete.
+
+If the environment was created before dependency updates, rebuild it:
+
+```bash
+cd backend
+rm -rf .venv
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
 ## API Endpoints
 
@@ -161,6 +253,7 @@ Attendance:
 - GET /api/attendance/export
 - GET /api/attendance/heatmap
 - GET /api/attendance/trends
+- DELETE /api/attendance/{id}
 
 WebSocket:
 

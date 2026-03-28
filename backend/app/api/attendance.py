@@ -164,3 +164,19 @@ async def update_attendance(
         confidence_score=attendance.confidence_score,
         cropped_face_path=attendance.cropped_face_path,
     )
+
+
+@router.delete("/{attendance_id}")
+async def delete_attendance(
+    attendance_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: object = Depends(require_admin),
+) -> dict[str, str]:
+    result = await db.execute(select(Attendance).where(Attendance.id == attendance_id))
+    attendance = result.scalar_one_or_none()
+    if attendance is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attendance record not found")
+
+    await db.delete(attendance)
+    await db.commit()
+    return {"message": "Attendance record deleted"}

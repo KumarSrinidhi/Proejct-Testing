@@ -16,13 +16,15 @@ class Settings(BaseSettings):
     attendance_cooldown_seconds: int = 300
     frame_process_interval: float = 1.0
     cuda_enabled: bool = True
-    gpu_strict_mode: bool = True
+    gpu_strict_mode: bool = False
     insightface_model: str = "buffalo_l"
     video_source_type: str = "file"
     video_source_path: str = ""
     auto_train_on_upload: bool = False
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 300
+    cors_origins: str = ""
+    cors_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     admin_username: str = "admin"
     admin_password: str = "admin123"
 

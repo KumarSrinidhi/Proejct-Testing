@@ -19,14 +19,22 @@ logging.basicConfig(
 )
 settings = get_settings()
 
+default_cors_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+configured_cors_origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+allow_origins = sorted(set(default_cors_origins + configured_cors_origins))
+
 app = FastAPI(title="Face Recognition Attendance System")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    allow_origin_regex=r"http://.*:5173",
+    allow_origins=allow_origins,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
