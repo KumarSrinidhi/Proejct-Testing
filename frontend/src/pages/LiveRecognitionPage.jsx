@@ -12,12 +12,13 @@ export default function LiveRecognitionPage() {
   const [statusMessage, setStatusMessage] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [previewMode, setPreviewMode] = useState("idle");
-  const [latestBox, setLatestBox] = useState(null);
+  const [latestFaces, setLatestFaces] = useState([]);
   const [frameSize, setFrameSize] = useState({ width: 1, height: 1 });
-  const [latestName, setLatestName] = useState("Unknown");
-  const [latestConfidence, setLatestConfidence] = useState(0);
+  const [currentFps, setCurrentFps] = useState(0);
+  const [processingMs, setProcessingMs] = useState(0);
   const socketRef = useRef(null);
   const frameIntervalRef = useRef(null);
+  const lastRecognitionTsRef = useRef(0);
   const previewObjectUrlRef = useRef(null);
   const webcamStreamRef = useRef(null);
   const videoRef = useRef(null);
@@ -157,10 +158,32 @@ export default function LiveRecognitionPage() {
       { source_type: wsSourceType, source_path: sourcePath || null },
       (payload) => {
         if (payload.type === "recognition") {
-          setEvents((prev) => [payload, ...prev].slice(0, 200));
-          setLatestBox(payload.bbox || null);
-          setLatestName(payload.name || "Unknown");
-          setLatestConfidence(payload.confidence || 0);
+          const now = performance.now();
+          if (lastRecognitionTsRef.current > 0) {
+            const delta = now - lastRecognitionTsRef.current;
+            if (delta > 0) {
+              setCurrentFps(Number((1000 / delta).toFixed(2)));
+            }
+          }
+          lastRecognitionTsRef.current = now;
+
+          const faces = Array.isArray(payload.faces) ? payload.faces : [];
+          if (faces.length > 0) {
+            const faceEvents = faces.map((face) => ({
+              ...payload,
+              person_id: face.person_id,
+              name: face.name,
+              confidence: face.confidence,
+              attendance_marked: face.attendance_marked,
+              message: face.message,
+              bbox: face.bbox,
+            }));
+            setEvents((prev) => [...faceEvents, ...prev].slice(0, 200));
+          } else {
+            setEvents((prev) => [payload, ...prev].slice(0, 200));
+          }
+          setLatestFaces(faces);
+          setProcessingMs(Number(payload.processing_ms || 0));
           if (payload.frame_width && payload.frame_height) {
             setFrameSize({ width: payload.frame_width, height: payload.frame_height });
           }
@@ -199,13 +222,19 @@ export default function LiveRecognitionPage() {
     socketRef.current?.close();
     socketRef.current = null;
     stopLocalPreview();
-    setLatestBox(null);
+    setLatestFaces([]);
+    setCurrentFps(0);
+    setProcessingMs(0);
+    lastRecognitionTsRef.current = 0;
     setStatusMessage("Processing stopped.");
   };
 
   const clearEvents = () => {
     setEvents([]);
-    setLatestBox(null);
+    setLatestFaces([]);
+    setCurrentFps(0);
+    setProcessingMs(0);
+    lastRecognitionTsRef.current = 0;
     setStatusMessage("Events cleared.");
   };
 
@@ -226,14 +255,12 @@ export default function LiveRecognitionPage() {
     }
   };
 
-  const boxStyle = latestBox
-    ? {
-        left: `${(latestBox[0] / frameSize.width) * 100}%`,
-        top: `${(latestBox[1] / frameSize.height) * 100}%`,
-        width: `${((latestBox[2] - latestBox[0]) / frameSize.width) * 100}%`,
-        height: `${((latestBox[3] - latestBox[1]) / frameSize.height) * 100}%`,
-      }
-    : null;
+  const getBoxStyle = (bbox) => ({
+    left: `${(bbox[0] / frameSize.width) * 100}%`,
+    top: `${(bbox[1] / frameSize.height) * 100}%`,
+    width: `${((bbox[2] - bbox[0]) / frameSize.width) * 100}%`,
+    height: `${((bbox[3] - bbox[1]) / frameSize.height) * 100}%`,
+  });
 
   return (
     <div className="space-y-4">
@@ -286,20 +313,36 @@ export default function LiveRecognitionPage() {
               Start processing to show preview
             </div>
           ) : null}
-          {boxStyle ? (
-            <>
-              <div className="absolute border-2 border-lime-400" style={boxStyle} />
-              <div
-                className="absolute bg-lime-500/90 text-black text-xs font-semibold px-2 py-1 rounded"
-                style={{
-                  left: boxStyle.left,
-                  top: `calc(${boxStyle.top} - 28px)`,
-                }}
-              >
-                {latestName} ({(latestConfidence || 0).toFixed(2)})
-              </div>
-            </>
+
+          {previewMode !== "idle" ? (
+            <div className="absolute top-2 left-2 bg-black/70 text-white text-xs rounded px-2 py-1 space-y-0.5">
+              <div>FPS: {currentFps.toFixed(2)}</div>
+              <div>Processing: {processingMs.toFixed(2)} ms</div>
+              <div>Faces: {latestFaces.length}</div>
+            </div>
           ) : null}
+
+          {latestFaces.map((face, idx) => {
+            if (!Array.isArray(face.bbox) || face.bbox.length < 4) {
+              return null;
+            }
+            const boxStyle = getBoxStyle(face.bbox);
+            const label = `${face.name || "Unknown"} (${Number(face.confidence || 0).toFixed(2)})`;
+            return (
+              <div key={`face-${idx}`}>
+                <div className="absolute border-2 border-lime-400" style={boxStyle} />
+                <div
+                  className="absolute bg-lime-500/90 text-black text-xs font-semibold px-2 py-1 rounded"
+                  style={{
+                    left: boxStyle.left,
+                    top: `calc(${boxStyle.top} - 28px)`,
+                  }}
+                >
+                  {label}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

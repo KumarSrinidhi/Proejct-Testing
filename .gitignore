@@ -63,3 +63,5 @@ pnpm-debug.log*
 
 # Large temporary outputs
 *.tmp
+
+vllm-env/

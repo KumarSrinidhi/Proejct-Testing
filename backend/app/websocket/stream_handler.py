@@ -3,6 +3,7 @@ import binascii
 import json
 import logging
 from datetime import datetime
+from time import perf_counter
 
 import cv2
 import numpy as np
@@ -38,30 +39,55 @@ async def _process_frame(
     face_service,
     attendance_service,
 ) -> None:
+    started = perf_counter()
     async with SessionLocal() as db:
-        person_id, name, confidence, face = face_service.recognize_face(frame)
+        recognized_faces = face_service.recognize_faces(frame)
+        faces_payload: list[dict[str, object]] = []
+        any_match = False
+
+        for item in recognized_faces:
+            person_id = item.get("person_id")
+            confidence = float(item.get("confidence") or 0.0)
+            face = item.get("face")
+            bbox = item.get("bbox")
+
+            attendance_marked = False
+            message = "No match"
+            if person_id and face is not None:
+                cropped = crop_face(frame, face.bbox)
+                ok, mark_message = await attendance_service.mark_attendance(db, int(person_id), confidence, cropped)
+                attendance_marked = ok
+                message = mark_message
+                any_match = True
+
+            faces_payload.append(
+                {
+                    "person_id": person_id,
+                    "name": item.get("name"),
+                    "confidence": confidence,
+                    "bbox": bbox,
+                    "attendance_marked": attendance_marked,
+                    "message": message,
+                }
+            )
+
+        primary = faces_payload[0] if faces_payload else None
         payload = {
             "type": "recognition",
             "timestamp": datetime.utcnow().isoformat(),
-            "person_id": person_id,
-            "name": name,
-            "confidence": confidence,
-            "attendance_marked": False,
-            "message": "No match",
-            "bbox": None,
+            "person_id": primary.get("person_id") if primary else None,
+            "name": primary.get("name") if primary else None,
+            "confidence": float(primary.get("confidence") or 0.0) if primary else 0.0,
+            "attendance_marked": bool(primary.get("attendance_marked")) if primary else False,
+            "message": primary.get("message") if primary else "No match",
+            "bbox": primary.get("bbox") if primary else None,
             "frame_width": int(frame.shape[1]),
             "frame_height": int(frame.shape[0]),
+            "faces": faces_payload,
+            "face_count": len(faces_payload),
+            "any_match": any_match,
+            "processing_ms": round((perf_counter() - started) * 1000, 2),
         }
-
-        if face is not None:
-            bbox = [int(v) for v in face.bbox]
-            payload["bbox"] = bbox
-
-        if person_id and face is not None:
-            cropped = crop_face(frame, face.bbox)
-            ok, message = await attendance_service.mark_attendance(db, person_id, confidence, cropped)
-            payload["attendance_marked"] = ok
-            payload["message"] = message
 
         await websocket.send_text(json.dumps(payload))
 

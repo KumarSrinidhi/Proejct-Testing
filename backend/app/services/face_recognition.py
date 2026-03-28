@@ -101,6 +101,20 @@ class FaceRecognitionService:
             return None
         return max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
 
+    def _extract_faces(self, image: np.ndarray) -> list[Any]:
+        if self._face_app is None:
+            logger.error("Face app not initialized")
+            return []
+        try:
+            faces = self._face_app.get(image)
+            if not faces:
+                return []
+            # Sort left-to-right for stable rendering order.
+            return sorted(faces, key=lambda f: float(f.bbox[0]))
+        except Exception as exc:
+            logger.warning("Face detection failed: %s", exc)
+            return []
+
     def extract_embedding(self, image: np.ndarray) -> tuple[np.ndarray | None, Any | None]:
         try:
             face = self._extract_face(image)
@@ -111,6 +125,14 @@ class FaceRecognitionService:
         except Exception as exc:
             logger.warning("Embedding extraction failed: %s", exc)
             return None, None
+
+    def _embedding_from_face(self, face: Any) -> np.ndarray | None:
+        try:
+            embedding = np.array(face.embedding, dtype=np.float32)
+            return self._normalize(embedding)
+        except Exception as exc:
+            logger.warning("Face embedding extraction failed: %s", exc)
+            return None
 
     async def add_person_embeddings(self, person_id: int, image_paths: list[str], db: AsyncSession) -> tuple[int, int]:
         added = 0
@@ -202,6 +224,42 @@ class FaceRecognitionService:
             return None, 0.0
         return self._index_to_person_id[idx], score
 
+    def _search_embedding(self, emb: np.ndarray) -> tuple[int | None, str | None, float]:
+        if self._gpu_available and self._torch_embeddings is not None:
+            person_id, score = self._search_with_torch_gpu(emb)
+            if person_id is None or score <= settings.recognition_threshold:
+                return None, None, score
+            return person_id, self._person_name_cache.get(person_id), score
+
+        if settings.gpu_strict_mode and self._gpu_available:
+            logger.error("GPU strict mode blocked CPU similarity search fallback")
+            return None, None, 0.0
+
+        if self._faiss is None or self._index is None:
+            best_person = None
+            best_score = -1.0
+            for person_id, vector in self._embeddings_cache.items():
+                candidate = np.array(vector, dtype=np.float32)
+                score = float(np.dot(emb, candidate))
+                if score > best_score:
+                    best_person = person_id
+                    best_score = score
+            if best_person is None or best_score <= settings.recognition_threshold:
+                return None, None, 0.0
+            return best_person, self._person_name_cache.get(best_person), best_score
+
+        query = emb.reshape(1, -1).astype(np.float32)
+        scores, indices = self._index.search(query, k=1)
+        score = float(scores[0][0])
+        idx = int(indices[0][0])
+        if idx < 0 or idx >= len(self._index_to_person_id):
+            return None, None, 0.0
+
+        person_id = self._index_to_person_id[idx]
+        if score <= settings.recognition_threshold:
+            return None, None, score
+        return person_id, self._person_name_cache.get(person_id), score
+
     async def rebuild_index(self, db: AsyncSession) -> dict[str, int]:
         start = perf_counter()
         total_images = 0
@@ -278,42 +336,32 @@ class FaceRecognitionService:
         emb, face = self.extract_embedding(face_image)
         if emb is None:
             return None, None, 0.0, None
-
-        if self._gpu_available and self._torch_embeddings is not None:
-            person_id, score = self._search_with_torch_gpu(emb)
-            if person_id is None or score <= settings.recognition_threshold:
-                return None, None, score, face
-            return person_id, self._person_name_cache.get(person_id), score, face
-
-        if settings.gpu_strict_mode and self._gpu_available:
-            logger.error("GPU strict mode blocked CPU similarity search fallback")
-            return None, None, 0.0, face
-
-        if self._faiss is None or self._index is None:
-            # Fallback path when FAISS is unavailable.
-            best_person = None
-            best_score = -1.0
-            for person_id, vector in self._embeddings_cache.items():
-                candidate = np.array(vector, dtype=np.float32)
-                score = float(np.dot(emb, candidate))
-                if score > best_score:
-                    best_person = person_id
-                    best_score = score
-            if best_person is None or best_score <= settings.recognition_threshold:
-                return None, None, 0.0, face
-            return best_person, self._person_name_cache.get(best_person), best_score, face
-
-        query = emb.reshape(1, -1).astype(np.float32)
-        scores, indices = self._index.search(query, k=1)
-        score = float(scores[0][0])
-        idx = int(indices[0][0])
-        if idx < 0 or idx >= len(self._index_to_person_id):
-            return None, None, 0.0, face
-
-        person_id = self._index_to_person_id[idx]
-        if score <= settings.recognition_threshold:
+        person_id, name, score = self._search_embedding(emb)
+        if person_id is None:
             return None, None, score, face
-        return person_id, self._person_name_cache.get(person_id), score, face
+        return person_id, name, score, face
+
+    def recognize_faces(self, frame: np.ndarray) -> list[dict[str, Any]]:
+        if not self._index_to_person_id:
+            return []
+
+        faces = self._extract_faces(frame)
+        results: list[dict[str, Any]] = []
+        for face in faces:
+            emb = self._embedding_from_face(face)
+            if emb is None:
+                continue
+            person_id, name, confidence = self._search_embedding(emb)
+            results.append(
+                {
+                    "person_id": person_id,
+                    "name": name,
+                    "confidence": float(confidence),
+                    "face": face,
+                    "bbox": [int(v) for v in face.bbox],
+                }
+            )
+        return results
 
     def _save_index_to_disk(self) -> None:
         if self._faiss is None or self._index is None:
