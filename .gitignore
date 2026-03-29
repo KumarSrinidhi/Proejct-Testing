@@ -130,6 +130,102 @@ embeddings_cache.json
 faiss_index.bin
 
 # ============================================================================
+# DEEP LEARNING — MODEL WEIGHTS & CHECKPOINTS
+# ============================================================================
+
+# PyTorch
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+lightning_logs/
+
+# TensorFlow / Keras
+*.h5
+*.hdf5
+*.keras
+*.pb
+saved_model/
+tf_model/
+
+# ONNX
+*.onnx
+
+# Pickle / joblib serialised models
+*.pkl
+*.pickle
+*.joblib
+
+# InsightFace downloaded model packs
+~/.insightface/
+.insightface/
+
+# General model directories
+models/
+weights/
+pretrained/
+model_zoo/
+
+# ============================================================================
+# DEEP LEARNING — DATASETS
+# ============================================================================
+
+# Dataset root folders (never commit raw training data)
+datasets/
+dataset/
+data/raw/
+data/processed/
+LFW/
+lfw/
+CelebA/
+VGGFace*/
+MS1MV*/
+
+# Common image archive formats used in datasets
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tiff
+*.tif
+# Un-ignore example/demo images if placed in docs/
+!docs/**/*.jpg
+!docs/**/*.png
+
+# ============================================================================
+# JUPYTER NOTEBOOKS — OUTPUT CELLS
+# ============================================================================
+
+# Notebook checkpoints (auto-saved by Jupyter)
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Strip output cells before committing (use nbstripout):
+# pip install nbstripout && nbstripout --install
+# NOTE: .ipynb files themselves are allowed, but outputs should be cleared.
+
+# ============================================================================
+# ML EXPERIMENT TRACKING
+# ============================================================================
+
+# MLflow
+mlruns/
+mlflow.db
+
+# Weights & Biases
+wandb/
+
+# TensorBoard logs
+runs/
+tb_logs/
+tensorboard_logs/
+events.out.tfevents.*
+
+# Optuna study databases
+optuna_study.db
+*.optuna
+
+# ============================================================================
 # NODE / FRONTEND
 # ============================================================================
 

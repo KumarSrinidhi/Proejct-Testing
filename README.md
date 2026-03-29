@@ -1,260 +1,594 @@
-# Face Recognition Attendance System
+# 🎯 Face Recognition Attendance System
 
-A high-accuracy attendance platform using FastAPI, InsightFace (buffalo_l), FAISS vector similarity search, and a React analytics dashboard.
+<div align="center">
 
-## Features
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![InsightFace](https://img.shields.io/badge/InsightFace-buffalo__l-FF6B35?style=for-the-badge)](https://github.com/deepinsight/insightface)
+[![FAISS](https://img.shields.io/badge/FAISS-1.9-blue?style=for-the-badge)](https://github.com/facebookresearch/faiss)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
-- Async FastAPI backend with SQLAlchemy ORM and SQLite
-- JWT auth with refresh tokens, bcrypt hashing, and login rate limiting
-- InsightFace embedding extraction using buffalo_l model
-- FAISS IndexFlatIP for cosine-similarity search
-- Training pipeline with logs and index/cache persistence
-- Attendance cooldown logic with cropped-face archival
-- WebSocket live recognition stream from file/webcam/rtsp placeholder
-- Live preview panel with real-time bounding box overlay
-- Live recognition events with IST timestamps and clear action
-- React + Tailwind + Chart.js dashboard, heatmap, trends, CRUD, and live feed
+**A production-grade, real-time face recognition attendance platform.**  
+Upload reference photos → train in one click → recognize faces live via webcam or video stream.
 
-## Project Structure
+[Features](#-features) • [How It Works](#-how-it-works) • [Installation](#-installation) • [Usage](#-usage) • [API](#-api-reference) • [Results](#-results)
 
-- backend: FastAPI app, services, models, tests
-- frontend: React app with analytics and live view
-- data: uploads and model index/cache files
+</div>
 
-## Installation Preflight
+---
 
-Run these checks before first install:
+## 🔍 Project Overview
 
-```bash
-python3 --version
-node --version
-npm --version
+### What does this project do?
+
+This system automates attendance tracking using **face recognition**. Instead of manually signing in, a person simply walks past a camera. The system detects their face, compares it against a database of known people, and marks their attendance automatically — all in real time.
+
+### The problem it solves
+
+Traditional attendance systems (paper sign-ins, card swipes, PIN entry) are:
+- **Slow** — queues form at entry points
+- **Forgeable** — colleagues can sign in for each other ("buddy punching")
+- **Manual** — require administrative overhead to reconcile records
+
+This system solves all three: it's instant, biometric (you can't lend your face), and fully automated with a dashboard for analytics.
+
+---
+
+## ✨ Features
+
+| Category | Details |
+|---|---|
+| **Backend** | Async FastAPI, SQLAlchemy ORM, SQLite |
+| **Auth** | JWT with refresh tokens, bcrypt hashing, login rate limiting |
+| **Face AI** | InsightFace `buffalo_l` model — detection + 512-d embeddings |
+| **Search** | FAISS `IndexFlatIP` for cosine-similarity vector search |
+| **Streaming** | WebSocket live recognition from webcam / file / RTSP |
+| **Frontend** | React + Vite + Tailwind + Chart.js — dashboard, heatmap, trends, CRUD |
+| **CUDA** | Auto-detects GPU; gracefully falls back to CPU |
+| **Testing** | pytest suite for recognition logic and attendance cooldown |
+
+---
+
+## 🧠 How It Works
+
+> **New to deep learning?** This section explains the core concepts from first principles.  
+> Skip to [Installation](#-installation) if you're already familiar.
+
+### Part 1 — Neural Networks & Deep Learning
+
+#### What is a neural network?
+
+Think of a neural network like a chain of filters that progressively extract meaning from raw data.
+
+Imagine you're trying to teach a child to recognise a dog in a photo:
+1. First they notice **edges** — where light meets dark
+2. Then they see **shapes** — ears, snout, paws
+3. Then they recognise the **whole animal**
+
+A neural network does exactly this, but with numbers:
+
+```
+Raw pixel values → Layer 1 (edges) → Layer 2 (shapes) → Layer 3 (parts) → Layer N (identity)
+    [0..255]         [gradients]       [curves/lines]     [eyes/nose]       [Person A]
 ```
 
-Recommended versions:
+Each "layer" is a collection of **neurons** — mathematical functions that take a weighted sum of their inputs and pass it through an activation function (like ReLU: `max(0, x)`). The weights are **learned** from data, not programmed by hand.
 
-- Python 3.11 or 3.12
-- Node 20+
-- npm 10+
+#### Why neural networks for faces?
 
-Linux runtime packages required for OpenCV:
+Faces are incredibly complex. Lighting, angle, age, glasses, and expressions all alter pixel values dramatically. Hand-crafted rules ("if pixel 42 > 180, it's a nose") fail almost immediately. Neural networks learn **invariant representations** — features that stay consistent regardless of these surface-level changes.
 
-```bash
-sudo apt-get update
-sudo apt-get install -y libglib2.0-0 libgl1
+---
+
+### Part 2 — Convolutional Neural Networks (CNNs)
+
+#### Why CNNs specifically for images?
+
+A plain neural network treats each pixel independently. For a 224×224 image, that's **150,528 inputs** — computationally brutal, and it ignores spatial relationships (the pixels forming an eye are *next to each other*, not scattered randomly).
+
+A **CNN** exploits this spatial structure using **convolution**: a small filter (e.g., 3×3 pixels) slides across the entire image and looks for a specific pattern wherever it appears.
+
+```
+Image patch:          Filter (detects edges):    Output (high = edge found):
+  10  10  10            -1  0  1                    0   0   0
+  10  10 200            -1  0  1         →           0   0 190
+  10  10 200            -1  0  1                    0   0 190
 ```
 
-## Backend Setup
+The network learns what filters to use. Early layers learn basic edges; deeper layers combine these into complex facial features.
 
-Prerequisites:
+```
+Input Image
+    │
+    ▼
+[Conv Layer 1]  ──► detects: edges, corners
+    │
+    ▼
+[Conv Layer 2]  ──► detects: curves, textures
+    │
+    ▼
+[Conv Layer 3]  ──► detects: eyes, nose, mouth
+    │
+    ▼
+[Fully Connected] ──► combines all features
+    │
+    ▼
+[Output]        ──► 512-dimensional face embedding vector
+```
 
-- Python 3.11 or 3.12
-- `pip` and `venv`
-- Linux packages for OpenCV runtime: `libglib2.0-0` and `libgl1` (or distro equivalent)
+---
 
-1. Create and activate a Python virtual environment.
-2. Create env file.
-3. Install dependencies.
-4. Start API server.
+### Part 3 — This Project's Training Pipeline
 
-Linux/macOS:
+This project uses **transfer learning** via the pre-trained `InsightFace buffalo_l` model. Here's what that means and how the full pipeline works:
 
+#### What is transfer learning?
+
+Training a face recognition model from scratch requires millions of labelled face images and weeks of GPU time. **Transfer learning** skips this: we download a model already trained on massive public datasets (like MS1MV3 with 5 million faces), then use it directly or fine-tune it on our specific data.
+
+**Analogy:** You don't re-learn English from scratch to read a new book. You use the language skills you already have and apply them to new content.
+
+#### The training pipeline in this project
+
+```
+Step 1: Upload reference images (2–10 photos per person)
+           ↓
+Step 2: Face Detection (InsightFace MTCNN-style detector)
+         → finds bounding boxes around faces in each photo
+           ↓
+Step 3: Alignment
+         → rotates/crops face to a standard 112×112 format
+         → ensures eyes are always at the same position
+           ↓
+Step 4: Embedding Extraction (buffalo_l backbone)
+         → runs the aligned face through the CNN
+         → outputs a 512-dimensional float vector
+           ↓
+Step 5: Averaging
+         → all embeddings for one person are averaged
+         → produces one representative "identity vector"
+           ↓
+Step 6: Index Building (FAISS)
+         → all identity vectors are stored in a FAISS index
+         → optimised for cosine similarity search (IndexFlatIP)
+           ↓
+Done: Index saved to disk, ready for real-time recognition
+```
+
+#### Key hyperparameters (what they mean)
+
+| Parameter | What it is | Default in this project |
+|---|---|---|
+| `RECOGNITION_THRESHOLD` | Cosine similarity score below which a face is called "Unknown" | `0.35` |
+| `FACE_DETECTION_THRESHOLD` | Confidence score for the detector to report a face | `0.5` |
+| `ATTENDANCE_COOLDOWN_SECONDS` | Minimum gap between two attendance marks for the same person | `60` |
+| `FRAME_PROCESS_INTERVAL` | Process every Nth video frame (reduces CPU load) | configurable |
+
+---
+
+### Part 4 — Face Recognition: Detection → Embedding → Matching
+
+#### Face detection vs. face recognition
+
+These are different problems often confused:
+
+| Task | Question answered | Output |
+|---|---|---|
+| **Face Detection** | "Is there a face in this image? Where?" | Bounding box coordinates |
+| **Face Recognition** | "Whose face is this?" | A person's identity |
+
+This project does **both** in sequence.
+
+#### The full recognition pipeline
+
+```
+Video Frame (raw pixels)
+        │
+        ▼
+  ┌─────────────┐
+  │   DETECTOR  │  InsightFace's detection head
+  │  (buffalo_l)│  → finds all faces in the frame
+  └─────────────┘
+        │  bounding box + landmarks (eyes, nose, mouth corners)
+        ▼
+  ┌─────────────┐
+  │  ALIGNMENT  │  Affine transform
+  │             │  → warps face to 112×112 canonical pose
+  └─────────────┘
+        │  normalised face crop
+        ▼
+  ┌─────────────┐
+  │  EMBEDDING  │  CNN backbone (ResNet-style)
+  │  EXTRACTION │  → outputs 512-float vector
+  └─────────────┘
+        │  query vector  q ∈ ℝ⁵¹²
+        ▼
+  ┌─────────────┐
+  │   MATCHING  │  FAISS IndexFlatIP
+  │  (FAISS)    │  → computes cosine similarity vs. all stored identities
+  └─────────────┘
+        │  top match + similarity score
+        ▼
+  score > threshold?
+  ├─ YES → Mark attendance for matched person
+  └─ NO  → Label as "Unknown"
+```
+
+#### What are face embeddings?
+
+A face embedding is a **compressed numeric fingerprint** of a face.
+
+The CNN maps each face to a point in a 512-dimensional space. The key property learned during training: **faces of the same person cluster together; faces of different people are far apart.**
+
+```
+                  ● ● (Alice: different photos)
+                ●
+                            ● ● (Bob: different lighting)
+                          ●
+
+         Distance between Alice cluster ≪ Distance between Alice & Bob
+```
+
+#### Similarity metrics
+
+**Cosine similarity** measures the *angle* between two vectors (not their length), making it robust to brightness/scale variations:
+
+```
+cosine_similarity(A, B) = (A · B) / (|A| × |B|)
+
+Range: -1 (opposite) to +1 (identical)
+Typical same-person score: > 0.5
+Typical different-person score: < 0.3
+Threshold in this project: 0.35 (configurable via RECOGNITION_THRESHOLD)
+```
+
+FAISS `IndexFlatIP` computes inner products on L2-normalised vectors, which is equivalent to cosine similarity — and does it much faster than a naive Python loop.
+
+#### Matching threshold — how the "match vs. no match" decision works
+
+```
+similarity = dot(query_embedding, stored_embedding)
+
+if similarity > RECOGNITION_THRESHOLD:
+    → "Recognised as Person X" ✅
+else:
+    → "Unknown" ❌
+```
+
+Setting the threshold too **high** → misses real matches (false negatives, legitimate users turned away).  
+Setting it too **low** → wrong matches (false positives, wrong person's attendance marked).
+
+The default `0.35` is conservative. In high-security settings, raise it to `0.5`+.
+
+#### Known limitations
+
+| Limitation | Why it happens | Mitigation |
+|---|---|---|
+| **Poor lighting** | Dark/blown-out images degrade embedding quality | Ensure adequate, consistent lighting |
+| **Extreme head pose** | Profile faces align poorly to the frontal 112×112 template | Capture reference images at multiple angles |
+| **Occlusion** | Masks, hats, hands covering the face reduce detector confidence | Use `FACE_DETECTION_THRESHOLD` to filter weak detections |
+| **Identical twins** | Two people whose faces are biologically near-identical | Add secondary verification or train on many varied images |
+| **Low resolution** | Faces smaller than ~40×40 pixels lose discriminative features | Ensure camera placement gives adequately sized face crops |
+
+---
+
+## 📦 Installation
+
+### Prerequisites
+
+| Tool | Minimum version | Check with |
+|---|---|---|
+| Python | 3.11 | `python --version` |
+| Node.js | 20 | `node -v` |
+| npm | 10 | `npm -v` |
+| Git | any | `git --version` |
+
+**Linux only** — OpenCV runtime libs:
+```bash
+sudo apt-get update && sudo apt-get install -y libglib2.0-0 libgl1
+```
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/<your-username>/face-recognition-attendance.git
+cd face-recognition-attendance
+```
+
+### 2. Backend setup
+
+**Linux / macOS:**
 ```bash
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-cp .env.example .env
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-If pip is old, upgrade installer tooling first:
-
-```bash
 pip install --upgrade pip setuptools wheel
+cp .env.example .env          # edit values as needed
+pip install -r requirements.txt
 ```
 
-Windows (PowerShell):
-
+**Windows (PowerShell):**
 ```powershell
 cd backend
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
-Copy-Item .env.example .env
+pip install --upgrade pip setuptools wheel
+Copy-Item .env.example .env   # edit values as needed
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-To deactivate the environment when finished:
-
-```bash
-deactivate
-```
-
-Default admin credentials:
-
-- username: admin
-- password: admin123
-
-You can override the bootstrap admin account in `.env` using:
-
-- `ADMIN_USERNAME`
-- `ADMIN_PASSWORD`
-
-## Frontend Setup
-
-If this is a fresh machine, verify Node and npm first:
-
-```bash
-node -v
-npm -v
-```
+### 3. Frontend setup
 
 ```bash
 cd frontend
 npm install
-npm run dev
 ```
 
-Frontend default URL: http://localhost:5173
-
-## Docker Compose
+### 4. (Optional) Docker Compose — starts everything at once
 
 ```bash
 docker compose up --build
 ```
 
-## CUDA Notes
+---
 
-- InsightFace and FAISS are configured to auto-detect CUDA.
-- Default setup is CPU-safe: `GPU_STRICT_MODE=false`.
-- Set `GPU_STRICT_MODE=true` only when CUDA is available and correctly configured.
-- Runtime uses:
-  - ctx_id=0 when torch.cuda.is_available(), else -1
-  - FAISS GPU index when available
-  - Torch CUDA tensor similarity search for recognition matching
-- For CUDA deployment, use CUDA-compatible base image and install GPU-enabled PyTorch + FAISS.
+## 🚀 Usage
 
-## Training and Recognition Flow
-
-1. Create persons via Persons page or POST /api/persons.
-2. Upload multiple reference images.
-3. Trigger POST /api/train.
-4. Start live recognition through WebSocket /ws/process.
-5. Attendance is auto-marked when confidence > threshold and cooldown passes.
-
-## Environment Variables
-
-See backend/.env.example for full configuration including:
-
-- DATABASE_URL
-- SECRET_KEY
-- RECOGNITION_THRESHOLD
-- FACE_DETECTION_THRESHOLD
-- ATTENDANCE_COOLDOWN_SECONDS
-- FRAME_PROCESS_INTERVAL
-- CUDA_ENABLED
-- GPU_STRICT_MODE
-- INSIGHTFACE_MODEL
-- VIDEO_SOURCE_TYPE
-- VIDEO_SOURCE_PATH
-- CORS_ORIGINS
-- CORS_ORIGIN_REGEX
-- ADMIN_USERNAME
-- ADMIN_PASSWORD
-
-## Testing
+### Start the backend API server
 
 ```bash
 cd backend
+source .venv/bin/activate     # Windows: .\.venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+API docs auto-generated at: **http://127.0.0.1:8000/docs**
+
+### Start the frontend dashboard
+
+```bash
+cd frontend
+npm run dev
+```
+
+Dashboard available at: **http://localhost:5173**
+
+Default login:
+- **Username:** `admin`
+- **Password:** `admin123`
+
+*(Override via `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `backend/.env`)*
+
+---
+
+### How to add a new person and run recognition
+
+```
+1. Go to the Persons page in the dashboard
+2. Click "Add Person" → fill in name/employee ID
+3. Upload 3–10 clear, well-lit reference photos of the face
+4. Navigate to the Training page → click "Train Model"
+   Wait for the status to show "Training complete"
+5. Navigate to Live Recognition → select webcam or upload a video
+6. Press "Start" — matches are shown in real time and attendance is recorded
+```
+
+### Run via API directly
+
+```bash
+# 1. Add a person
+curl -X POST http://localhost:8000/api/persons \
+  -H "Authorization: Bearer <token>" \
+  -F "name=Alice Smith" -F "employee_id=EMP001"
+
+# 2. Upload a reference image
+curl -X POST http://localhost:8000/api/persons/1/images \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@alice_photo.jpg"
+
+# 3. Trigger training
+curl -X POST http://localhost:8000/api/train \
+  -H "Authorization: Bearer <token>"
+
+# 4. Check training status
+curl http://localhost:8000/api/train/status \
+  -H "Authorization: Bearer <token>"
+```
+
+### Run tests
+
+```bash
+cd backend
+source .venv/bin/activate
 pytest -q
 ```
 
-Unit tests included for:
+---
 
-- Face recognition embedding averaging and threshold behavior
-- Attendance cooldown and successful marking
+## 🗂️ Project Structure
 
-## Troubleshooting
-
-If backend startup fails with:
-
-- `ImportError: email-validator is not installed`
-
-Run:
-
-```bash
-cd backend
-source .venv/bin/activate
-pip install -r requirements.txt
+```
+face-recognition-attendance/
+├── backend/                        # Python / FastAPI application
+│   ├── app/
+│   │   ├── main.py                 # FastAPI app factory, CORS, lifespan hooks
+│   │   ├── config.py               # Pydantic Settings — all env vars with defaults
+│   │   ├── database.py             # Async SQLAlchemy engine and session factory
+│   │   ├── api/
+│   │   │   ├── auth.py             # JWT login, token refresh endpoints
+│   │   │   ├── persons.py          # Person CRUD + image upload/delete
+│   │   │   ├── training.py         # Train trigger, status, and log endpoints
+│   │   │   ├── attendance.py       # Attendance list, today, export, heatmap, trends
+│   │   │   ├── video.py            # Video source configuration endpoint
+│   │   │   └── deps.py             # Shared FastAPI dependencies (auth, DB session)
+│   │   ├── models/                 # SQLAlchemy ORM table definitions
+│   │   ├── schemas/                # Pydantic request/response schemas
+│   │   ├── services/
+│   │   │   ├── face_recognition.py # Core: InsightFace + FAISS training & inference
+│   │   │   ├── attendance_service.py # Cooldown logic, attendance creation
+│   │   │   ├── analytics_service.py  # Heatmap and trend aggregation queries
+│   │   │   └── video_ingestion.py  # Frame-reading from webcam / file / RTSP
+│   │   ├── websocket/              # WebSocket handler for live recognition stream
+│   │   └── utils/                  # Shared helpers (image preprocessing, etc.)
+│   ├── tests/                      # pytest test suite
+│   ├── requirements.txt            # Pinned Python dependencies
+│   ├── .env.example                # Environment variable template
+│   └── Dockerfile                  # Backend container image
+│
+├── frontend/                       # React + Vite + Tailwind dashboard
+│   ├── src/
+│   │   ├── App.jsx                 # Router setup, protected routes
+│   │   ├── main.jsx                # React entry point
+│   │   ├── pages/
+│   │   │   ├── Login.jsx           # Login form with JWT storage
+│   │   │   ├── Dashboard.jsx       # Overview stats cards
+│   │   │   ├── PersonsPage.jsx     # Person CRUD with image gallery
+│   │   │   ├── TrainingPage.jsx    # Train trigger, log viewer, status polling
+│   │   │   ├── LiveRecognitionPage.jsx # WebSocket stream, bounding box overlay
+│   │   │   ├── AttendancePage.jsx  # Paginated attendance table with CSV export
+│   │   │   ├── HeatmapPage.jsx     # Attendance heatmap calendar view
+│   │   │   └── TrendsPage.jsx      # Chart.js line charts for attendance trends
+│   │   ├── components/             # Shared UI components (Navbar, cards, modals)
+│   │   └── services/               # Axios API client wrappers
+│   ├── package.json
+│   ├── vite.config.js
+│   └── tailwind.config.js
+│
+├── docker-compose.yml              # Orchestrates backend + frontend containers
+├── .gitignore                      # Python, Node, ML model, dataset exclusions
+├── CHANGELOG.md                    # Version history
+├── CONTRIBUTING.md                 # Contribution guidelines
+├── LICENSE                         # MIT License
+└── README.md                       # This file
 ```
 
-If login fails with browser CORS errors:
+---
 
-- Keep frontend on http://localhost:5173, or
-- Set `CORS_ORIGINS` in `backend/.env` with comma-separated frontend origins.
+## 📊 Results
 
-Example:
+> ⚠️ *This section will be updated with benchmark results from your deployment.*
 
-```bash
-CORS_ORIGINS=http://localhost:5173,http://localhost:4173,http://127.0.0.1:4173
+### Accuracy Metrics
+
+| Metric | Value |
+|---|---|
+| Identification Accuracy | _to be measured_ |
+| False Accept Rate (FAR) | _to be measured_ |
+| False Reject Rate (FRR) | _to be measured_ |
+| Average inference latency (CPU) | _to be measured_ |
+| Average inference latency (GPU) | _to be measured_ |
+
+### Sample Output
+
+> _Add demo GIFs of the live recognition stream and dashboard screenshots here._
+
+```
+📸 Demo GIF placeholder — capture with OBS or ffmpeg:
+   ffmpeg -f gdigrab -i desktop -t 15 demo.gif
 ```
 
-If browser webcam mode does not start:
+---
 
-- Ensure camera permission is granted in the browser.
-- Use localhost or HTTPS (many browsers block camera access on insecure remote HTTP origins).
-- Confirm no other app is exclusively locking the camera device.
+## ⚙️ Environment Variables
 
-If `pip install -r requirements.txt` fails around `insightface`, `onnxruntime`, `faiss-cpu`, or `torch`:
+Full reference for `backend/.env`:
 
-- Upgrade pip/setuptools/wheel.
-- Recreate `.venv`.
-- Retry on Python 3.11 if your platform wheel support for 3.12 is incomplete.
+| Variable | Description | Default |
+|---|---|---|
+| `DATABASE_URL` | SQLAlchemy async DB URL | `sqlite+aiosqlite:///./attendance.db` |
+| `SECRET_KEY` | JWT signing secret | _generate with `openssl rand -hex 32`_ |
+| `RECOGNITION_THRESHOLD` | Cosine similarity threshold for identity match | `0.35` |
+| `FACE_DETECTION_THRESHOLD` | Minimum detector confidence to accept a face | `0.5` |
+| `ATTENDANCE_COOLDOWN_SECONDS` | Minimum seconds between attendance marks per person | `60` |
+| `FRAME_PROCESS_INTERVAL` | Process every Nth frame from video stream | `5` |
+| `INSIGHTFACE_MODEL` | InsightFace model pack name | `buffalo_l` |
+| `VIDEO_SOURCE_TYPE` | `webcam`, `file`, or `rtsp` | `webcam` |
+| `VIDEO_SOURCE_PATH` | Path/URL for `file` or `rtsp` source | — |
+| `CUDA_ENABLED` | Enable CUDA acceleration | `false` |
+| `GPU_STRICT_MODE` | Fail hard if CUDA unavailable | `false` |
+| `CORS_ORIGINS` | Comma-separated allowed frontend origins | `http://localhost:5173` |
+| `ADMIN_USERNAME` | Bootstrap admin account username | `admin` |
+| `ADMIN_PASSWORD` | Bootstrap admin account password | `admin123` |
 
-If the environment was created before dependency updates, rebuild it:
+---
 
-```bash
-cd backend
-rm -rf .venv
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+## 📡 API Reference
 
-## API Endpoints
+Interactive docs: **http://localhost:8000/docs** (Swagger UI)
 
-Auth:
+### Authentication
 
-- POST /api/auth/login
-- POST /api/auth/refresh
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/auth/login` | Obtain access + refresh tokens |
+| `POST` | `/api/auth/refresh` | Exchange refresh token for new access token |
 
-Persons:
+### Persons
 
-- POST /api/persons
-- GET /api/persons
-- GET /api/persons/{id}
-- PUT /api/persons/{id}
-- DELETE /api/persons/{id}
-- POST /api/persons/{id}/images
-- GET /api/persons/{id}/images
-- DELETE /api/images/{id}
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/persons` | Create a new person |
+| `GET` | `/api/persons` | List all persons |
+| `GET` | `/api/persons/{id}` | Get person by ID |
+| `PUT` | `/api/persons/{id}` | Update person details |
+| `DELETE` | `/api/persons/{id}` | Delete person and all their images |
+| `POST` | `/api/persons/{id}/images` | Upload a reference image |
+| `GET` | `/api/persons/{id}/images` | List reference images |
+| `DELETE` | `/api/images/{id}` | Delete a specific reference image |
 
-Training:
+### Training
 
-- POST /api/train
-- GET /api/train/status
-- GET /api/train/logs
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/train` | Trigger model training (async) |
+| `GET` | `/api/train/status` | Get current training status |
+| `GET` | `/api/train/logs` | Stream training log output |
 
-Attendance:
+### Attendance
 
-- GET /api/attendance
-- GET /api/attendance/today
-- GET /api/attendance/export
-- GET /api/attendance/heatmap
-- GET /api/attendance/trends
-- DELETE /api/attendance/{id}
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/attendance` | List all records (paginated) |
+| `GET` | `/api/attendance/today` | Today's attendance records |
+| `GET` | `/api/attendance/export` | Download CSV export |
+| `GET` | `/api/attendance/heatmap` | Heatmap aggregated data |
+| `GET` | `/api/attendance/trends` | Time-series trend data |
+| `DELETE` | `/api/attendance/{id}` | Delete a specific record |
 
-WebSocket:
+### WebSocket
 
-- WS /ws/process
+| Endpoint | Description |
+|---|---|
+| `WS /ws/process` | Bidirectional stream: send frames, receive recognition events + bounding boxes |
+
+---
+
+## 📚 References & Key Papers
+
+| Paper | Description | Link |
+|---|---|---|
+| **ArcFace** (Deng et al., 2019) | Training loss for face recognition embeddings — used by InsightFace | [arXiv:1801.07698](https://arxiv.org/abs/1801.07698) |
+| **RetinaFace** (Deng et al., 2020) | Face detection with landmark regression | [arXiv:1905.00641](https://arxiv.org/abs/1905.00641) |
+| **InsightFace** (Guo et al.) | Production face analysis library (detection + recognition) | [GitHub](https://github.com/deepinsight/insightface) |
+| **FAISS** (Johnson et al., 2019) | Efficient similarity search for dense vectors | [arXiv:1702.08734](https://arxiv.org/abs/1702.08734) |
+| **FaceNet** (Schroff et al., 2015) | Pioneered embedding-based face recognition | [arXiv:1503.03832](https://arxiv.org/abs/1503.03832) |
+| **Deep Residual Networks** (He et al., 2016) | ResNet backbone architecture used by buffalo_l | [arXiv:1512.03385](https://arxiv.org/abs/1512.03385) |
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to open issues, submit pull requests, and follow the code style.
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for full text.
+
+---
+
+<div align="center">
+Built with ❤️ using FastAPI, InsightFace, FAISS, and React.
+</div>
