@@ -1,6 +1,6 @@
 import csv
 import io
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -70,8 +70,8 @@ async def get_today_summary(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> AttendanceTodaySummary:
-    now = datetime.now(UTC)
-    day_start = datetime(now.year, now.month, now.day, tzinfo=UTC)
+    now = datetime.now(timezone.utc)
+    day_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
 
     total_result = await db.execute(select(func.count(Attendance.id)).where(Attendance.timestamp >= day_start))
     unique_result = await db.execute(

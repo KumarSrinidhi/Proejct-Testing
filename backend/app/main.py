@@ -12,7 +12,7 @@ from app.models.user import User
 from app.services.attendance_service import AttendanceService
 from app.services.face_recognition import FaceRecognitionService
 from app.config import get_settings
-from app.utils.security import hash_password
+from app.utils.security import ensure_password_hashing_compatibility, hash_password
 from app.websocket.stream_handler import router as ws_router
 
 
@@ -58,6 +58,9 @@ async def lifespan(app: FastAPI):
     # Startup
     try:
         logger.info("Starting application...")
+
+        # Fail fast if password hashing dependencies are incompatible.
+        ensure_password_hashing_compatibility()
         
         # Create database tables
         try:

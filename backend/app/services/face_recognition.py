@@ -5,6 +5,7 @@ from time import perf_counter
 from threading import RLock
 from typing import Any
 
+import cv2
 import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,14 +47,17 @@ class FaceRecognitionService:
             import insightface
 
             ctx_id = 0 if self._gpu_available else -1
-            self._face_app = insightface.app.FaceAnalysis(name=settings.insightface_model)
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if self._gpu_available else ["CPUExecutionProvider"]
+            self._face_app = insightface.app.FaceAnalysis(name=settings.insightface_model, providers=providers)
             self._face_app.prepare(ctx_id=ctx_id, det_thresh=settings.face_detection_threshold)
             logger.info("InsightFace initialized", extra={"ctx_id": ctx_id})
         except Exception as exc:
             logger.exception("Failed to initialize InsightFace: %s", exc)
             self._face_app = None
-            if settings.gpu_strict_mode:
-                raise
+            raise RuntimeError(
+                "Face detection engine initialization failed. Ensure onnxruntime is installed "
+                "and compatible with insightface."
+            ) from exc
 
         try:
             import faiss
@@ -94,28 +98,49 @@ class FaceRecognitionService:
             return emb
         return emb / norm
 
-    def _extract_face(self, image: np.ndarray) -> Any | None:
-        if self._face_app is None:
-            logger.error("Face app not initialized")
-            return None
-        faces = self._face_app.get(image)
-        if not faces:
-            return None
-        return max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-
-    def _extract_faces(self, image: np.ndarray) -> list[Any]:
+    def _detect_faces(self, image: np.ndarray) -> list[Any]:
         if self._face_app is None:
             logger.error("Face app not initialized")
             return []
         try:
             faces = self._face_app.get(image)
-            if not faces:
-                return []
-            # Sort left-to-right for stable rendering order.
-            return sorted(faces, key=lambda f: float(f.bbox[0]))
+            return faces or []
         except Exception as exc:
             logger.warning("Face detection failed: %s", exc)
             return []
+
+    def _resized_candidates(self, image: np.ndarray) -> list[np.ndarray]:
+        # Retry with larger images to improve detection for small/distant faces.
+        h, w = image.shape[:2]
+        longest = max(h, w)
+        candidates: list[np.ndarray] = []
+        for scale in (1.5, 2.0):
+            target_longest = int(longest * scale)
+            if target_longest > 1920:
+                continue
+            resized = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            candidates.append(resized)
+        return candidates
+
+    def _extract_face(self, image: np.ndarray) -> Any | None:
+        faces = self._detect_faces(image)
+        if faces:
+            return max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+
+        for candidate in self._resized_candidates(image):
+            faces = self._detect_faces(candidate)
+            if faces:
+                logger.info("Face detected after resize fallback")
+                return max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+
+        return None
+
+    def _extract_faces(self, image: np.ndarray) -> list[Any]:
+        faces = self._detect_faces(image)
+        if not faces:
+            return []
+        # Sort left-to-right for stable rendering order.
+        return sorted(faces, key=lambda f: float(f.bbox[0]))
 
     def extract_embedding(self, image: np.ndarray) -> tuple[np.ndarray | None, Any | None]:
         try:

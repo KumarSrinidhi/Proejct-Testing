@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy import delete, func, select
@@ -51,7 +51,7 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 
 async def check_login_rate_limit(username: str, db: AsyncSession) -> None:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     window_start = now - timedelta(seconds=settings.login_rate_limit_window_seconds)
 
     await db.execute(
@@ -74,5 +74,5 @@ async def check_login_rate_limit(username: str, db: AsyncSession) -> None:
 
 
 async def record_login_attempt(username: str, db: AsyncSession) -> None:
-    db.add(LoginAttempt(username=username, attempted_at=datetime.now(UTC)))
+    db.add(LoginAttempt(username=username, attempted_at=datetime.now(timezone.utc)))
     await db.commit()

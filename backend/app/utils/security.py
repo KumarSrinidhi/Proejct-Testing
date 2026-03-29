@@ -1,4 +1,5 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from importlib.metadata import PackageNotFoundError, version as package_version
 import logging
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -8,6 +9,7 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+BCRYPT_MAX_PASSWORD_BYTES = 72
 
 # Security: Password hashing configuration
 # - Scheme: bcrypt (cryptographically secure, resistant to brute force)
@@ -25,6 +27,28 @@ class TokenError(Exception):
     pass
 
 
+def ensure_password_hashing_compatibility() -> None:
+    """Validate passlib/bcrypt runtime compatibility before hashing passwords."""
+    try:
+        passlib_version = package_version("passlib")
+        bcrypt_version = package_version("bcrypt")
+    except PackageNotFoundError as exc:
+        raise RuntimeError(
+            "Password hashing dependencies are missing. Reinstall backend requirements."
+        ) from exc
+
+    try:
+        bcrypt_major = int(bcrypt_version.split(".", 1)[0])
+    except ValueError:
+        bcrypt_major = None
+
+    if passlib_version.startswith("1.7.") and bcrypt_major is not None and bcrypt_major >= 5:
+        raise RuntimeError(
+            "Incompatible password hashing dependencies detected: passlib 1.7.x "
+            "requires bcrypt < 5. Install backend requirements to pin bcrypt==4.0.1."
+        )
+
+
 def hash_password(password: str) -> str:
     """
     Hash a password using bcrypt.
@@ -40,6 +64,13 @@ def hash_password(password: str) -> str:
     - Use proper password hashing (bcrypt, argon2, or scrypt)
     - Never log passwords or hashes
     """
+    password_bytes = password.encode("utf-8")
+    if len(password_bytes) > BCRYPT_MAX_PASSWORD_BYTES:
+        raise ValueError(
+            f"Password is too long for bcrypt: {len(password_bytes)} bytes "
+            f"(max {BCRYPT_MAX_PASSWORD_BYTES})."
+        )
+
     return pwd_context.hash(password)
 
 
@@ -77,7 +108,7 @@ def create_access_token(subject: str) -> tuple[str, datetime]:
     - Includes token type to prevent misuse
     - Secret key must be changed in production
     """
-    expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {"sub": subject, "exp": expire, "type": "access"}
     return jwt.encode(payload, settings.secret_key, algorithm="HS256"), expire
 
@@ -97,7 +128,7 @@ def create_refresh_token(subject: str) -> tuple[str, datetime]:
     - Separate token type to prevent cross-token attacks
     - Should be rotated regularly
     """
-    expire = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
     payload = {"sub": subject, "exp": expire, "type": "refresh"}
     return jwt.encode(payload, settings.secret_key, algorithm="HS256"), expire
 

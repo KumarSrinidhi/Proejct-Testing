@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy import select
@@ -50,7 +50,7 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
         secure=settings.is_production,
         samesite="lax",
         path="/",
-        max_age=max(1, int((expires_at - datetime.now(UTC)).total_seconds())),
+        max_age=max(1, int((expires_at - datetime.now(timezone.utc)).total_seconds())),
     )
     response.set_cookie(
         key="refresh_token",
@@ -102,7 +102,7 @@ async def refresh(
         secure=settings.is_production,
         samesite="lax",
         path="/",
-        max_age=max(1, int((expires_at - datetime.now(UTC)).total_seconds())),
+        max_age=max(1, int((expires_at - datetime.now(timezone.utc)).total_seconds())),
     )
     response.set_cookie(
         key="refresh_token",

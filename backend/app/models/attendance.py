@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,7 +18,7 @@ class Attendance(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     person_id: Mapped[int] = mapped_column(ForeignKey("persons.id"), nullable=False, index=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), nullable=False, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     confidence_score: Mapped[float] = mapped_column(Float, nullable=False)
     cropped_face_path: Mapped[str] = mapped_column(String(500), nullable=False)
 

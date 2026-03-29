@@ -2,7 +2,7 @@ import base64
 import binascii
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 
@@ -79,7 +79,7 @@ async def _process_frame(
         primary = faces_payload[0] if faces_payload else None
         payload = {
             "type": "recognition",
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "person_id": primary.get("person_id") if primary else None,
             "name": primary.get("name") if primary else None,
             "confidence": float(primary.get("confidence") or 0.0) if primary else 0.0,

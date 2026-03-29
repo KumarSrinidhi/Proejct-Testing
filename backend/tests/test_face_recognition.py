@@ -48,3 +48,28 @@ def test_recognize_face_threshold() -> None:
     assert person_id == 1
     assert name == "Alice"
     assert confidence > 0.6
+
+
+def test_extract_embedding_uses_resize_fallback() -> None:
+    service = FaceRecognitionService()
+    image = np.zeros((24, 24, 3), dtype=np.uint8)
+    embedding = np.ones((512,), dtype=np.float32)
+    face = MagicMock(bbox=[0, 0, 10, 10], embedding=embedding)
+
+    class FakeFaceApp:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def get(self, _img):
+            self.calls += 1
+            if self.calls == 1:
+                return []
+            return [face]
+
+    service._face_app = FakeFaceApp()
+
+    emb, detected_face = service.extract_embedding(image)
+
+    assert emb is not None
+    assert detected_face is face
+    assert np.isclose(np.linalg.norm(emb), 1.0)

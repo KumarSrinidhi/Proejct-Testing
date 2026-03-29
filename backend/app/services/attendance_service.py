@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 import numpy as np
@@ -30,7 +30,7 @@ class AttendanceService:
         confidence: float,
         cropped_face: np.ndarray,
     ) -> tuple[bool, str]:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         self._prune_last_marked(now)
 
         if confidence <= settings.recognition_threshold:

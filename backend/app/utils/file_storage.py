@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import logging
 import re
@@ -37,7 +37,7 @@ def save_person_image(person_id: int, filename: str, image_bytes: bytes) -> str:
     person_dir.mkdir(parents=True, exist_ok=True)
 
     safe_name = _safe_filename(filename, fallback_ext=".jpg")
-    ts = int(datetime.now(UTC).timestamp())
+    ts = int(datetime.now(timezone.utc).timestamp())
     output_path = person_dir / f"{ts}_{safe_name}"
     resolved_person_dir = person_dir.resolve()
     resolved_output = output_path.resolve()
@@ -63,7 +63,7 @@ def save_cropped_face(person_id: int, cropped_face: np.ndarray, timestamp: datet
 def save_uploaded_video(filename: str, video_bytes: bytes) -> str:
     ensure_storage_dirs()
     safe_name = _safe_filename(filename, fallback_ext=".mp4")
-    ts = int(datetime.now(UTC).timestamp())
+    ts = int(datetime.now(timezone.utc).timestamp())
     output_path = VIDEO_UPLOADS_ROOT / f"{ts}_{safe_name}"
 
     resolved_video_root = VIDEO_UPLOADS_ROOT.resolve()
