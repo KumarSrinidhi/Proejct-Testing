@@ -174,11 +174,8 @@ async def upload_person_images(
 
             if face_service is not None:
                 embedding, _ = face_service.extract_embedding(image)
-                if embedding is None:
-                    results.append({"filename": upload.filename, "status": "failed", "reason": "No face detected"})
-                    await db.delete(db_image)
-                    continue
-                db_image.encoding_blob = json.dumps(embedding.tolist())
+                if embedding is not None:
+                    db_image.encoding_blob = json.dumps(embedding.tolist())
 
             results.append({"filename": upload.filename, "status": "ok", "image_id": db_image.id})
         except Exception as exc:
