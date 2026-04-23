@@ -36,7 +36,6 @@ secrets/
 # OS and editor
 .DS_Store
 Thumbs.db
-.vscode/
 .idea/
 *.swp
 *.swo

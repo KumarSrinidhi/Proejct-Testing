@@ -1,0 +1,51 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "build",
+			"path": "frontend",
+			"group": "build",
+			"problemMatcher": [],
+			"label": "npm: build - frontend",
+			"detail": "vite build"
+		},
+		{
+			"type": "shell",
+			"label": "backend: start api",
+			"command": "${workspaceFolder}\\backend\\.venv\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"uvicorn",
+				"app.main:app",
+				"--reload",
+				"--host",
+				"127.0.0.1",
+				"--port",
+				"8000"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}\\backend"
+			},
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"type": "npm",
+			"script": "dev",
+			"path": "frontend",
+			"problemMatcher": [],
+			"label": "frontend: start dev server",
+			"detail": "vite dev"
+		},
+		{
+			"label": "launch: backend + frontend",
+			"dependsOn": [
+				"backend: start api",
+				"frontend: start dev server"
+			],
+			"dependsOrder": "parallel",
+			"group": "build"
+		}
+	]
+}
