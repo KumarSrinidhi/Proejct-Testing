@@ -12,3 +12,10 @@ class UndetectedFaceRead(BaseModel):
 
 class UndetectedFaceCleanupResponse(BaseModel):
     deleted_records: int
+
+
+class UndetectedFaceListResponse(BaseModel):
+    items: list[UndetectedFaceRead]
+    total: int
+    page: int
+    page_size: int

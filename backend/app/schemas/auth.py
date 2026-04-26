@@ -21,6 +21,13 @@ class UserRead(BaseModel):
     created_at: datetime
 
 
+class UserListResponse(BaseModel):
+    items: list[UserRead]
+    total: int
+    page: int
+    page_size: int
+
+
 class UserCreateRequest(BaseModel):
     username: str = Field(min_length=3, max_length=150)
     email: EmailStr

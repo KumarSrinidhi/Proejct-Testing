@@ -13,9 +13,13 @@ export default function TrainingPage() {
   const [deletingImageId, setDeletingImageId] = useState(null);
 
   const load = async () => {
-    const [statusRes, logsRes, personsRes] = await Promise.all([trainingApi.status(), trainingApi.logs(), personApi.list()]);
+    const [statusRes, logsRes, personsRes] = await Promise.all([
+      trainingApi.status(),
+      trainingApi.logs({ page: 1, page_size: 100 }),
+      personApi.list(),
+    ]);
     setStatus(statusRes.data);
-    setLogs(logsRes.data || []);
+    setLogs(logsRes.data?.items || logsRes.data || []);
     const allPersons = personsRes.data || [];
     setPersons(allPersons);
     if (!selectedPersonId && allPersons.length > 0) {

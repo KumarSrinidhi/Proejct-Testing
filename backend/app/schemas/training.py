@@ -23,3 +23,10 @@ class TrainingLogRead(BaseModel):
 
 class TrainingLogUpdate(BaseModel):
     status: str
+
+
+class TrainingLogListResponse(BaseModel):
+    items: list[TrainingLogRead]
+    total: int
+    page: int
+    page_size: int

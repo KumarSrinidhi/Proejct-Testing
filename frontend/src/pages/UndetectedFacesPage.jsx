@@ -18,8 +18,8 @@ export default function UndetectedFacesPage() {
     setLoading(true);
     setMessage("");
     try {
-      const { data } = await undetectedFaceApi.list();
-      setItems(data || []);
+      const { data } = await undetectedFaceApi.list({ page: 1, page_size: 200 });
+      setItems(data?.items || data || []);
     } catch (error) {
       setMessage(error?.response?.data?.detail || "Failed to load undetected faces.");
     } finally {

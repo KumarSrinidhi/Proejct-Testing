@@ -1,8 +1,10 @@
 import logging
 import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -20,6 +22,27 @@ from app.websocket.stream_handler import router as ws_router
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def _build_error_payload(
+    *,
+    code: str,
+    message: str,
+    details: object | None,
+    path: str,
+    detail_compat: object,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "error": {
+            "code": code,
+            "message": message,
+        },
+        "detail": detail_compat,
+        "path": path,
+    }
+    if details is not None:
+        payload["error"]["details"] = details
+    return payload
 
 # Configure logging
 logging.basicConfig(
@@ -181,6 +204,63 @@ app = FastAPI(
     title="Face Recognition Attendance System",
     lifespan=lifespan
 )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    detail_value = exc.detail
+    if isinstance(detail_value, dict):
+        message = str(detail_value.get("message") or detail_value.get("detail") or "Request failed")
+        details = detail_value
+    elif isinstance(detail_value, list):
+        message = "Request failed"
+        details = detail_value
+    else:
+        message = str(detail_value or "Request failed")
+        details = None
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_build_error_payload(
+            code=f"HTTP_{exc.status_code}",
+            message=message,
+            details=details,
+            path=request.url.path,
+            detail_compat=detail_value,
+        ),
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    errors = exc.errors()
+    return JSONResponse(
+        status_code=422,
+        content=_build_error_payload(
+            code="VALIDATION_ERROR",
+            message="Validation failed",
+            details=errors,
+            path=request.url.path,
+            detail_compat=errors,
+        ),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled server error on path=%s", request.url.path)
+    message = "Internal server error"
+    return JSONResponse(
+        status_code=500,
+        content=_build_error_payload(
+            code="INTERNAL_SERVER_ERROR",
+            message=message,
+            details=None,
+            path=request.url.path,
+            detail_compat=message,
+        ),
+    )
 
 # CORS middleware: Security - specify exact origins instead of wildcards (*)
 app.add_middleware(

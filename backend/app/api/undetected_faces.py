@@ -1,36 +1,51 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_teacher_or_admin
 from app.database import get_db
 from app.models.undetected_face import UndetectedFace
-from app.schemas.undetected_face import UndetectedFaceCleanupResponse, UndetectedFaceRead
+from app.schemas.undetected_face import UndetectedFaceCleanupResponse, UndetectedFaceListResponse, UndetectedFaceRead
 from app.utils.file_storage import UNDETECTED_FACES_ROOT
 
 
 router = APIRouter(prefix="/api/undetected-faces", tags=["undetected-faces"])
 
 
-@router.get("", response_model=list[UndetectedFaceRead])
+@router.get("", response_model=UndetectedFaceListResponse)
 async def list_undetected_faces(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_teacher_or_admin),
-) -> list[UndetectedFaceRead]:
-    result = await db.execute(select(UndetectedFace).order_by(UndetectedFace.created_at.desc()))
+) -> UndetectedFaceListResponse:
+    total_result = await db.execute(select(func.count(UndetectedFace.id)))
+    total = int(total_result.scalar() or 0)
+
+    result = await db.execute(
+        select(UndetectedFace)
+        .order_by(UndetectedFace.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     rows = result.scalars().all()
-    return [
-        UndetectedFaceRead(
-            id=row.id,
-            source_type=row.source_type,
-            reviewed=row.reviewed,
-            created_at=row.created_at,
-        )
-        for row in rows
-    ]
+    return UndetectedFaceListResponse(
+        items=[
+            UndetectedFaceRead(
+                id=row.id,
+                source_type=row.source_type,
+                reviewed=row.reviewed,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/{face_id}/preview")

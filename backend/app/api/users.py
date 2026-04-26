@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from app.models.person import Person
 from app.models.user import ROLE_ADMIN, ROLE_STUDENT, ROLE_TEACHER, User
 from app.schemas.auth import (
     UserCreateRequest,
+    UserListResponse,
     UserPasswordResetRequest,
     UserRead,
     UserRoleUpdateRequest,
@@ -43,12 +44,22 @@ def _person_payload_for_user(person: Person | None) -> dict[str, object]:
     }
 
 
-@router.get("", response_model=list[UserRead])
+@router.get("", response_model=UserListResponse)
 async def list_users(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
-) -> list[UserRead]:
-    result = await db.execute(select(User).order_by(User.created_at.desc(), User.id.desc()))
+) -> UserListResponse:
+    total_result = await db.execute(select(func.count(User.id)))
+    total = int(total_result.scalar() or 0)
+
+    result = await db.execute(
+        select(User)
+        .order_by(User.created_at.desc(), User.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     rows = result.scalars().all()
     user_emails = [row.email for row in rows if row.email]
     person_by_email: dict[str, Person] = {}
@@ -56,18 +67,23 @@ async def list_users(
         persons_result = await db.execute(select(Person).where(Person.email.in_(user_emails)))
         person_by_email = {person.email: person for person in persons_result.scalars().all()}
 
-    return [
-        UserRead(
-            id=row.id,
-            username=row.username,
-            email=row.email,
-            is_admin=bool(row.is_admin),
-            role=_effective_role(row),
-            **_person_payload_for_user(person_by_email.get(row.email or "")),
-            created_at=row.created_at,
-        )
-        for row in rows
-    ]
+    return UserListResponse(
+        items=[
+            UserRead(
+                id=row.id,
+                username=row.username,
+                email=row.email,
+                is_admin=bool(row.is_admin),
+                role=_effective_role(row),
+                **_person_payload_for_user(person_by_email.get(row.email or "")),
+                created_at=row.created_at,
+            )
+            for row in rows
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("", response_model=UserRead)

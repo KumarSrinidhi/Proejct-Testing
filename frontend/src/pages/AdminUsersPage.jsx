@@ -19,8 +19,8 @@ export default function AdminUsersPage() {
   const [busy, setBusy] = useState(false);
 
   const loadUsers = async () => {
-    const { data } = await userApi.list();
-    setUsers(data);
+    const { data } = await userApi.list({ page: 1, page_size: 200 });
+    setUsers(data?.items || data || []);
   };
 
   useEffect(() => {

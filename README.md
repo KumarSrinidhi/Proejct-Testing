@@ -160,9 +160,9 @@ Done: Index saved to disk, ready for real-time recognition
 
 | Parameter | What it is | Default in this project |
 |---|---|---|
-| `RECOGNITION_THRESHOLD` | Cosine similarity score below which a face is called "Unknown" | `0.35` |
-| `FACE_DETECTION_THRESHOLD` | Confidence score for the detector to report a face | `0.5` |
-| `ATTENDANCE_COOLDOWN_SECONDS` | Minimum gap between two attendance marks for the same person | `60` |
+| `RECOGNITION_THRESHOLD` | Cosine similarity score below which a face is called "Unknown" | `0.6` |
+| `FACE_DETECTION_THRESHOLD` | Confidence score for the detector to report a face | `0.35` |
+| `ATTENDANCE_COOLDOWN_SECONDS` | Minimum gap between two attendance marks for the same person | `300` |
 | `FRAME_PROCESS_INTERVAL` | Process every Nth video frame (reduces CPU load) | configurable |
 
 ---
@@ -240,7 +240,7 @@ cosine_similarity(A, B) = (A · B) / (|A| × |B|)
 Range: -1 (opposite) to +1 (identical)
 Typical same-person score: > 0.5
 Typical different-person score: < 0.3
-Threshold in this project: 0.35 (configurable via RECOGNITION_THRESHOLD)
+Threshold in this project: 0.6 (configurable via RECOGNITION_THRESHOLD)
 ```
 
 FAISS `IndexFlatIP` computes inner products on L2-normalised vectors, which is equivalent to cosine similarity — and does it much faster than a naive Python loop.
@@ -498,16 +498,16 @@ Full reference for `backend/.env`:
 |---|---|---|
 | `DATABASE_URL` | SQLAlchemy async DB URL | `sqlite+aiosqlite:///./attendance.db` |
 | `SECRET_KEY` | JWT signing secret | _generate with `openssl rand -hex 32`_ |
-| `RECOGNITION_THRESHOLD` | Cosine similarity threshold for identity match | `0.35` |
-| `FACE_DETECTION_THRESHOLD` | Minimum detector confidence to accept a face | `0.5` |
-| `ATTENDANCE_COOLDOWN_SECONDS` | Minimum seconds between attendance marks per person | `60` |
-| `FRAME_PROCESS_INTERVAL` | Process every Nth frame from video stream | `5` |
+| `RECOGNITION_THRESHOLD` | Cosine similarity threshold for identity match | `0.6` |
+| `FACE_DETECTION_THRESHOLD` | Minimum detector confidence to accept a face | `0.35` |
+| `ATTENDANCE_COOLDOWN_SECONDS` | Minimum seconds between attendance marks per person | `300` |
+| `FRAME_PROCESS_INTERVAL` | Process every Nth frame from video stream | `1.0` |
 | `INSIGHTFACE_MODEL` | InsightFace model pack name | `buffalo_l` |
-| `VIDEO_SOURCE_TYPE` | `webcam`, `file`, or `rtsp` | `webcam` |
+| `VIDEO_SOURCE_TYPE` | `webcam`, `file`, or `rtsp` | `file` |
 | `VIDEO_SOURCE_PATH` | Path/URL for `file` or `rtsp` source | — |
-| `CUDA_ENABLED` | Enable CUDA acceleration | `false` |
+| `CUDA_ENABLED` | Enable CUDA acceleration | `true` |
 | `GPU_STRICT_MODE` | Fail hard if CUDA unavailable | `false` |
-| `CORS_ORIGINS` | Comma-separated allowed frontend origins | `http://localhost:5173` |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated allowed frontend origins | empty (uses secure defaults in development) |
 | `ADMIN_USERNAME` | Bootstrap admin account username | `admin` |
 | `ADMIN_PASSWORD` | Bootstrap admin account password | `admin123` |
 

@@ -86,7 +86,7 @@ export const attendanceApi = {
 };
 
 export const userApi = {
-  list: () => api.get("/api/users"),
+  list: (params = {}) => api.get("/api/users", { params }),
   create: (payload) => api.post("/api/users", payload),
   updateRole: (id, role) => api.put(`/api/users/${id}/role`, { role }),
   updatePassword: (id, password) => api.put(`/api/users/${id}/password`, { password }),
@@ -96,7 +96,7 @@ export const userApi = {
 export const trainingApi = {
   trigger: () => api.post("/api/train"),
   status: () => api.get("/api/train/status"),
-  logs: () => api.get("/api/train/logs"),
+  logs: (params = {}) => api.get("/api/train/logs", { params }),
   getLog: (id) => api.get(`/api/train/logs/${id}`),
   updateLog: (id, payload) => api.put(`/api/train/logs/${id}`, payload),
 };
@@ -106,7 +106,7 @@ export const videoApi = {
 };
 
 export const undetectedFaceApi = {
-  list: () => api.get("/api/undetected-faces"),
+  list: (params = {}) => api.get("/api/undetected-faces", { params }),
   preview: (id) => api.get(`/api/undetected-faces/${id}/preview`, { responseType: "blob" }),
   remove: (id) => api.delete(`/api/undetected-faces/${id}`),
   cleanup: () => api.post("/api/undetected-faces/cleanup"),

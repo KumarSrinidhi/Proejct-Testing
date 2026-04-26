@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin
 from app.database import get_db
 from app.models.training_log import TrainingLog
-from app.schemas.training import TrainingLogRead, TrainingLogUpdate, TrainingSummary
+from app.schemas.training import TrainingLogListResponse, TrainingLogRead, TrainingLogUpdate, TrainingSummary
 from fastapi import HTTPException, status
 
 
@@ -34,14 +35,29 @@ async def get_training_status(
     return TrainingLogRead.model_validate(row)
 
 
-@router.get("/logs", response_model=list[TrainingLogRead])
+@router.get("/logs", response_model=TrainingLogListResponse)
 async def list_training_logs(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
-) -> list[TrainingLogRead]:
-    result = await db.execute(select(TrainingLog).order_by(TrainingLog.timestamp.desc()).limit(100))
+) -> TrainingLogListResponse:
+    total_result = await db.execute(select(func.count(TrainingLog.id)))
+    total = int(total_result.scalar() or 0)
+
+    result = await db.execute(
+        select(TrainingLog)
+        .order_by(TrainingLog.timestamp.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     rows = result.scalars().all()
-    return [TrainingLogRead.model_validate(row) for row in rows]
+    return TrainingLogListResponse(
+        items=[TrainingLogRead.model_validate(row) for row in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/logs/{log_id}", response_model=TrainingLogRead)
