@@ -12,15 +12,16 @@ from app.database import get_db
 from app.models.attendance import Attendance
 from app.models.person import Person
 from app.models.user import User
-from app.schemas.attendance import AttendanceRead, AttendanceTodaySummary, AttendanceUpdate
+from app.schemas.attendance import AttendanceListResponse, AttendanceRead, AttendanceTodaySummary, AttendanceUpdate
 from app.services.analytics_service import AnalyticsService
+from app.utils.pagination import paginate_select
 
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 analytics_service = AnalyticsService()
 
 
-@router.get("", response_model=list[AttendanceRead])
+@router.get("", response_model=AttendanceListResponse)
 async def list_attendance(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
@@ -28,9 +29,10 @@ async def list_attendance(
     date_to: datetime | None = Query(default=None),
     person_id: int | None = Query(default=None),
     department: str | None = Query(default=None),
+    search: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_teacher_or_admin),
-) -> list[AttendanceRead]:
+) -> AttendanceListResponse:
     query = (
         select(Attendance, Person.name, Person.department)
         .join(Person, Person.id == Attendance.person_id)
@@ -46,24 +48,41 @@ async def list_attendance(
         filters.append(Attendance.person_id == person_id)
     if department:
         filters.append(Person.department == department)
+    if search:
+        like = f"%{search}%"
+        filters.append((Person.name.ilike(like)) | (Person.department.ilike(like)))
 
     if filters:
         query = query.where(and_(*filters))
 
-    result = await db.execute(query.offset((page - 1) * page_size).limit(page_size))
-    rows = result.all()
-    return [
-        AttendanceRead(
-            id=attendance.id,
-            person_id=attendance.person_id,
-            person_name=name,
-            department=dept,
-            timestamp=attendance.timestamp,
-            confidence_score=attendance.confidence_score,
-            cropped_face_path=attendance.cropped_face_path,
-        )
-        for attendance, name, dept in rows
-    ]
+    count_query = select(func.count(Attendance.id)).join(Person, Person.id == Attendance.person_id)
+    if filters:
+        count_query = count_query.where(and_(*filters))
+    total, rows = await paginate_select(
+        db,
+        query,
+        count_query,
+        page=page,
+        page_size=page_size,
+        use_scalars=False,
+    )
+    return AttendanceListResponse(
+        items=[
+            AttendanceRead(
+                id=attendance.id,
+                person_id=attendance.person_id,
+                person_name=name,
+                department=dept,
+                timestamp=attendance.timestamp,
+                confidence_score=attendance.confidence_score,
+                cropped_face_path=attendance.cropped_face_path,
+            )
+            for attendance, name, dept in rows
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/today", response_model=AttendanceTodaySummary)
@@ -184,13 +203,13 @@ async def delete_attendance(
     return {"message": "Attendance record deleted"}
 
 
-@router.get("/mine", response_model=list[AttendanceRead])
+@router.get("/mine", response_model=AttendanceListResponse)
 async def list_my_attendance(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> list[AttendanceRead]:
+) -> AttendanceListResponse:
     identity_email = current_user.email or current_user.username
     query = (
         select(Attendance, Person.name, Person.department)
@@ -198,20 +217,31 @@ async def list_my_attendance(
         .where(Person.email == identity_email)
         .order_by(Attendance.timestamp.desc())
     )
-    result = await db.execute(query.offset((page - 1) * page_size).limit(page_size))
-    rows = result.all()
-    return [
-        AttendanceRead(
-            id=attendance.id,
-            person_id=attendance.person_id,
-            person_name=name,
-            department=dept,
-            timestamp=attendance.timestamp,
-            confidence_score=attendance.confidence_score,
-            cropped_face_path=attendance.cropped_face_path,
-        )
-        for attendance, name, dept in rows
-    ]
+    total, rows = await paginate_select(
+        db,
+        query,
+        select(func.count(Attendance.id)).join(Person, Person.id == Attendance.person_id).where(Person.email == identity_email),
+        page=page,
+        page_size=page_size,
+        use_scalars=False,
+    )
+    return AttendanceListResponse(
+        items=[
+            AttendanceRead(
+                id=attendance.id,
+                person_id=attendance.person_id,
+                person_name=name,
+                department=dept,
+                timestamp=attendance.timestamp,
+                confidence_score=attendance.confidence_score,
+                cropped_face_path=attendance.cropped_face_path,
+            )
+            for attendance, name, dept in rows
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/mine/today", response_model=AttendanceTodaySummary)

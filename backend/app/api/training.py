@@ -7,6 +7,7 @@ from app.api.deps import require_admin
 from app.database import get_db
 from app.models.training_log import TrainingLog
 from app.schemas.training import TrainingLogListResponse, TrainingLogRead, TrainingLogUpdate, TrainingSummary
+from app.utils.pagination import paginate_select
 from fastapi import HTTPException, status
 
 
@@ -42,16 +43,13 @@ async def list_training_logs(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> TrainingLogListResponse:
-    total_result = await db.execute(select(func.count(TrainingLog.id)))
-    total = int(total_result.scalar() or 0)
-
-    result = await db.execute(
-        select(TrainingLog)
-        .order_by(TrainingLog.timestamp.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+    total, rows = await paginate_select(
+        db,
+        select(TrainingLog).order_by(TrainingLog.timestamp.desc()),
+        select(func.count(TrainingLog.id)),
+        page=page,
+        page_size=page_size,
     )
-    rows = result.scalars().all()
     return TrainingLogListResponse(
         items=[TrainingLogRead.model_validate(row) for row in rows],
         total=total,

@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.undetected_face import UndetectedFace
 from app.schemas.undetected_face import UndetectedFaceCleanupResponse, UndetectedFaceListResponse, UndetectedFaceRead
 from app.utils.file_storage import UNDETECTED_FACES_ROOT
+from app.utils.pagination import paginate_select
 
 
 router = APIRouter(prefix="/api/undetected-faces", tags=["undetected-faces"])
@@ -22,16 +23,13 @@ async def list_undetected_faces(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_teacher_or_admin),
 ) -> UndetectedFaceListResponse:
-    total_result = await db.execute(select(func.count(UndetectedFace.id)))
-    total = int(total_result.scalar() or 0)
-
-    result = await db.execute(
-        select(UndetectedFace)
-        .order_by(UndetectedFace.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+    total, rows = await paginate_select(
+        db,
+        select(UndetectedFace).order_by(UndetectedFace.created_at.desc()),
+        select(func.count(UndetectedFace.id)),
+        page=page,
+        page_size=page_size,
     )
-    rows = result.scalars().all()
     return UndetectedFaceListResponse(
         items=[
             UndetectedFaceRead(

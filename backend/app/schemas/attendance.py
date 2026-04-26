@@ -18,6 +18,13 @@ class AttendanceTodaySummary(BaseModel):
     avg_confidence: float
 
 
+class AttendanceListResponse(BaseModel):
+    items: list[AttendanceRead]
+    total: int
+    page: int
+    page_size: int
+
+
 class AttendanceUpdate(BaseModel):
     timestamp: datetime
     confidence_score: float = Field(ge=0.0, le=1.0)

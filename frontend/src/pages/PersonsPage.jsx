@@ -4,6 +4,11 @@ import ImageUploader from "../components/ImageUploader";
 
 export default function PersonsPage() {
   const [persons, setPersons] = useState([]);
+  const [totalPersons, setTotalPersons] = useState(0);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -21,20 +26,25 @@ export default function PersonsPage() {
   const [editForm, setEditForm] = useState({ name: "", email: "", department: "" });
 
   const loadPersons = async () => {
+    setLoading(true);
     try {
-      const { data } = await personApi.list();
-      setPersons(data);
-      if (!selectedPersonId && data.length) {
-        setSelectedPersonId(data[0].id);
+      const { data } = await personApi.list({ page, page_size: pageSize, search });
+      const items = data?.items || data || [];
+      setPersons(items);
+      setTotalPersons(data?.total ?? items.length);
+      if (!selectedPersonId && items.length) {
+        setSelectedPersonId(items[0].id);
       }
     } catch (error) {
       setUploadMessage(error?.response?.data?.detail || "Failed to load persons. Please login again.");
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     loadPersons();
-  }, []);
+  }, [page, search]);
 
   const create = async (event) => {
     event.preventDefault();
@@ -185,7 +195,31 @@ export default function PersonsPage() {
       </form>
 
       <div className="card">
-        <h3 className="font-display text-lg mb-3">Persons</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h3 className="font-display text-lg">Persons</h3>
+          <div className="flex items-center gap-2">
+            <input
+              className="border rounded p-2 text-sm"
+              placeholder="Search name, email, department"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+            />
+            <button
+              type="button"
+              className="rounded bg-slate-700 text-white px-3 py-2 text-sm"
+              onClick={loadPersons}
+              disabled={loading}
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+        <div className="text-xs text-slate-600 mb-2">Showing {persons.length} of {totalPersons}</div>
+        {loading ? <div className="text-sm mb-2">Loading persons...</div> : null}
+        {!loading && persons.length === 0 ? <div className="text-sm mb-2">No persons found.</div> : null}
         <div className="space-y-2 max-h-[360px] overflow-auto">
           {persons.map((person) => (
             <div
@@ -268,6 +302,18 @@ export default function PersonsPage() {
         uploading={uploading}
         uploadPercent={uploadPercent}
       />
+
+      <div className="card flex items-center justify-between text-sm">
+        <span>Page {page}</span>
+        <div className="flex gap-2">
+          <button type="button" className="rounded bg-slate-700 text-white px-3 py-2" onClick={() => setPage((prev) => Math.max(1, prev - 1))} disabled={page <= 1 || loading}>
+            Previous
+          </button>
+          <button type="button" className="rounded bg-slate-700 text-white px-3 py-2" onClick={() => setPage((prev) => prev + 1)} disabled={loading || persons.length < pageSize || page * pageSize >= totalPersons}>
+            Next
+          </button>
+        </div>
+      </div>
 
       {uploadMessage ? (
         <div className="card text-sm">

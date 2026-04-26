@@ -40,6 +40,13 @@ class PersonRead(BaseModel):
         from_attributes = True
 
 
+class PersonListResponse(BaseModel):
+    items: list[PersonRead]
+    total: int
+    page: int
+    page_size: int
+
+
 class PersonDetail(PersonRead):
     image_count: int
     attendance_count: int

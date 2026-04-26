@@ -4,20 +4,38 @@ import { attendanceApi } from "../services/api";
 
 export default function AttendancePage() {
   const [records, setRecords] = useState([]);
+  const [totalRecords, setTotalRecords] = useState(0);
   const [deletingId, setDeletingId] = useState(null);
   const [message, setMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
   const { role, isAdmin } = useAuth();
   const isStudent = role === "student";
+  const pageSize = 20;
 
   const load = async () => {
-    const request = isStudent ? attendanceApi.listMine() : attendanceApi.list();
-    const { data } = await request;
-    setRecords(data);
+    setLoading(true);
+    try {
+      const request = isStudent
+        ? attendanceApi.listMine({ page, page_size: pageSize })
+        : attendanceApi.list({ page, page_size: pageSize, search });
+      const { data } = await request;
+      const items = data?.items || data || [];
+      setRecords(items);
+      setTotalRecords(data?.total ?? items.length);
+    } catch (error) {
+      setMessage(error?.response?.data?.detail || "Failed to load attendance records.");
+      setRecords([]);
+      setTotalRecords(0);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     load();
-  }, []);
+  }, [page, search, isStudent]);
 
   const exportCsv = async () => {
     if (!isAdmin) return;
@@ -50,13 +68,29 @@ export default function AttendancePage() {
 
   return (
     <div className="card">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h3 className="font-display text-lg">Attendance Logs</h3>
-        {isAdmin ? (
-          <button onClick={exportCsv} className="rounded bg-accent text-white px-3 py-2">Export CSV</button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {!isStudent ? (
+            <input
+              className="border rounded p-2 text-sm"
+              placeholder="Search name or department"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+            />
+          ) : null}
+          {isAdmin ? (
+            <button onClick={exportCsv} className="rounded bg-accent text-white px-3 py-2">Export CSV</button>
+          ) : null}
+        </div>
       </div>
       {message ? <div className="mb-3 text-sm">{message}</div> : null}
+      <div className="mb-2 text-xs text-slate-600">Showing {records.length} of {totalRecords}</div>
+      {loading ? <div className="mb-2 text-sm">Loading attendance...</div> : null}
+      {!loading && records.length === 0 ? <div className="mb-2 text-sm">No attendance records found.</div> : null}
       <div className="overflow-auto">
         <table className="w-full text-sm">
           <thead>
@@ -90,6 +124,17 @@ export default function AttendancePage() {
             ))}
           </tbody>
         </table>
+      </div>
+      <div className="mt-3 flex items-center justify-between text-sm">
+        <span>Page {page}</span>
+        <div className="flex gap-2">
+          <button type="button" className="rounded bg-slate-700 text-white px-3 py-2" onClick={() => setPage((prev) => Math.max(1, prev - 1))} disabled={page <= 1 || loading}>
+            Previous
+          </button>
+          <button type="button" className="rounded bg-slate-700 text-white px-3 py-2" onClick={() => setPage((prev) => prev + 1)} disabled={loading || records.length < pageSize || page * pageSize >= totalRecords}>
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );

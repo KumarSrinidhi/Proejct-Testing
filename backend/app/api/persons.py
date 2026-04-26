@@ -13,8 +13,10 @@ from app.database import get_db
 from app.models.attendance import Attendance
 from app.models.person import Person, PersonImage
 from app.models.user import ROLE_ADMIN, User
-from app.schemas.person import PersonCreate, PersonDetail, PersonImageRead, PersonRead, PersonUpdate
+from app.schemas.person import PersonCreate, PersonDetail, PersonImageRead, PersonListResponse, PersonRead, PersonUpdate
 from app.utils.file_storage import PERSON_IMAGES_ROOT, save_person_image
+from app.utils.image_quality import validate_training_image
+from app.utils.pagination import paginate_select
 from app.utils.image_utils import bytes_to_cv2_image
 from app.utils.security import hash_password
 from app.config import get_settings
@@ -78,7 +80,7 @@ async def create_person(
     return PersonRead.model_validate(person)
 
 
-@router.get("/persons", response_model=list[PersonRead])
+@router.get("/persons", response_model=PersonListResponse)
 async def list_persons(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
@@ -86,17 +88,31 @@ async def list_persons(
     include_inactive: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
-) -> list[PersonRead]:
+) -> PersonListResponse:
     query = select(Person)
+    count_query = select(func.count(Person.id))
     if not include_inactive:
         query = query.where(Person.is_active.is_(True))
+        count_query = count_query.where(Person.is_active.is_(True))
     if search:
         like = f"%{search}%"
-        query = query.where((Person.name.ilike(like)) | (Person.email.ilike(like)))
+        search_filter = (Person.name.ilike(like)) | (Person.email.ilike(like)) | (Person.department.ilike(like))
+        query = query.where(search_filter)
+        count_query = count_query.where(search_filter)
 
-    result = await db.execute(query.offset((page - 1) * page_size).limit(page_size).order_by(Person.id.desc()))
-    rows = result.scalars().all()
-    return [PersonRead.model_validate(row) for row in rows]
+    total, rows = await paginate_select(
+        db,
+        query.order_by(Person.id.desc()),
+        count_query,
+        page=page,
+        page_size=page_size,
+    )
+    return PersonListResponse(
+        items=[PersonRead.model_validate(row) for row in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/persons/{person_id}", response_model=PersonDetail)
@@ -197,6 +213,11 @@ async def upload_person_images(
             image = bytes_to_cv2_image(payload)
             if image is None:
                 results.append({"filename": upload.filename, "status": "failed", "reason": "Unreadable image"})
+                continue
+
+            quality_issue = validate_training_image(image)
+            if quality_issue is not None:
+                results.append({"filename": upload.filename, "status": "failed", "reason": quality_issue})
                 continue
 
             path = save_person_image(person_id, upload.filename or "image.jpg", payload)

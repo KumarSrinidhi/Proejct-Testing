@@ -16,11 +16,11 @@ export default function TrainingPage() {
     const [statusRes, logsRes, personsRes] = await Promise.all([
       trainingApi.status(),
       trainingApi.logs({ page: 1, page_size: 100 }),
-      personApi.list(),
+      personApi.list({ page: 1, page_size: 200 }),
     ]);
     setStatus(statusRes.data);
     setLogs(logsRes.data?.items || logsRes.data || []);
-    const allPersons = personsRes.data || [];
+    const allPersons = personsRes.data?.items || personsRes.data || [];
     setPersons(allPersons);
     if (!selectedPersonId && allPersons.length > 0) {
       setSelectedPersonId(allPersons[0].id);

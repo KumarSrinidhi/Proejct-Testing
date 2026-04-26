@@ -5,6 +5,11 @@ const ROLE_OPTIONS = ["admin", "teacher", "student"];
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState([]);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const pageSize = 20;
   const [form, setForm] = useState({
     username: "",
     email: "",
@@ -19,15 +24,26 @@ export default function AdminUsersPage() {
   const [busy, setBusy] = useState(false);
 
   const loadUsers = async () => {
-    const { data } = await userApi.list({ page: 1, page_size: 200 });
-    setUsers(data?.items || data || []);
+    setLoading(true);
+    try {
+      const { data } = await userApi.list({ page, page_size: pageSize, search });
+      const items = data?.items || data || [];
+      setUsers(items);
+      setTotalUsers(data?.total ?? items.length);
+    } catch (error) {
+      setMessage(error?.response?.data?.detail || "Failed to load users.");
+      setUsers([]);
+      setTotalUsers(0);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     loadUsers().catch((error) => {
       setMessage(error?.response?.data?.detail || "Failed to load users.");
     });
-  }, []);
+  }, [page, search]);
 
   const createUser = async (event) => {
     event.preventDefault();
@@ -178,7 +194,26 @@ export default function AdminUsersPage() {
       {message ? <div className="card text-sm">{message}</div> : null}
 
       <div className="card overflow-auto">
-        <h3 className="font-display text-lg mb-3">Users</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h3 className="font-display text-lg">Users</h3>
+          <div className="flex items-center gap-2">
+            <input
+              className="border rounded p-2 text-sm"
+              placeholder="Search username, email, or person"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+            />
+            <button type="button" className="rounded bg-slate-700 text-white px-3 py-2 text-sm" onClick={loadUsers} disabled={loading}>
+              Refresh
+            </button>
+          </div>
+        </div>
+        <div className="text-xs text-slate-600 mb-2">Showing {users.length} of {totalUsers}</div>
+        {loading ? <div className="text-sm mb-2">Loading users...</div> : null}
+        {!loading && users.length === 0 ? <div className="text-sm mb-2">No users found.</div> : null}
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left border-b">
@@ -251,6 +286,18 @@ export default function AdminUsersPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="card flex items-center justify-between text-sm">
+        <span>Page {page}</span>
+        <div className="flex gap-2">
+          <button type="button" className="rounded bg-slate-700 text-white px-3 py-2" onClick={() => setPage((prev) => Math.max(1, prev - 1))} disabled={page <= 1 || loading}>
+            Previous
+          </button>
+          <button type="button" className="rounded bg-slate-700 text-white px-3 py-2" onClick={() => setPage((prev) => prev + 1)} disabled={loading || users.length < pageSize || page * pageSize >= totalUsers}>
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );

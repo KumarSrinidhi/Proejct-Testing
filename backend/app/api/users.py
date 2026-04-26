@@ -15,6 +15,7 @@ from app.schemas.auth import (
     UserRead,
     UserRoleUpdateRequest,
 )
+from app.utils.pagination import paginate_select
 from app.utils.security import hash_password
 
 
@@ -51,16 +52,13 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> UserListResponse:
-    total_result = await db.execute(select(func.count(User.id)))
-    total = int(total_result.scalar() or 0)
-
-    result = await db.execute(
-        select(User)
-        .order_by(User.created_at.desc(), User.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+    total, rows = await paginate_select(
+        db,
+        select(User).order_by(User.created_at.desc(), User.id.desc()),
+        select(func.count(User.id)),
+        page=page,
+        page_size=page_size,
     )
-    rows = result.scalars().all()
     user_emails = [row.email for row in rows if row.email]
     person_by_email: dict[str, Person] = {}
     if user_emails:
