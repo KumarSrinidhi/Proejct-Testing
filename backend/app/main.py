@@ -1,6 +1,7 @@
 import logging
+import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -190,6 +191,23 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],  # Be specific, don't allow all methods
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_request_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    client = request.client.host if request.client else "unknown"
+    logger.info(
+        "Request handled method=%s path=%s status=%s duration_ms=%.2f client=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+        client,
+    )
+    return response
 
 # Include routers
 app.include_router(auth.router)

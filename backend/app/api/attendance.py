@@ -23,7 +23,7 @@ analytics_service = AnalyticsService()
 @router.get("", response_model=list[AttendanceRead])
 async def list_attendance(
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=100, ge=1, le=500),
+    page_size: int = Query(default=20, ge=1, le=200),
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
     person_id: int | None = Query(default=None),
@@ -187,7 +187,7 @@ async def delete_attendance(
 @router.get("/mine", response_model=list[AttendanceRead])
 async def list_my_attendance(
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=100, ge=1, le=500),
+    page_size: int = Query(default=20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[AttendanceRead]:

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +19,7 @@ from app.utils.security import hash_password
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 VALID_ROLES = {ROLE_ADMIN, ROLE_TEACHER, ROLE_STUDENT}
+logger = logging.getLogger(__name__)
 
 
 def _normalize_role(role: str) -> str:
@@ -162,6 +165,7 @@ async def update_user_role(
     user.is_admin = role == ROLE_ADMIN
     await db.commit()
     await db.refresh(user)
+    logger.info("User role updated user_id=%s role=%s", user.id, user.role)
 
     return UserRead(
         id=user.id,
@@ -188,6 +192,7 @@ async def reset_user_password(
 
     user.hashed_password = hash_password(payload.password)
     await db.commit()
+    logger.info("User password reset user_id=%s", user.id)
     return {"message": "Password updated"}
 
 
@@ -215,4 +220,5 @@ async def delete_user(
 
     await db.delete(user)
     await db.commit()
+    logger.info("User deleted user_id=%s by_admin_id=%s", user_id, current_admin.id)
     return {"message": "User deleted"}
