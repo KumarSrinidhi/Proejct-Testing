@@ -4,8 +4,10 @@ import { attendanceApi } from "../services/api";
 export default function StudentDashboard() {
   const [summary, setSummary] = useState({ total_today: 0, unique_today: 0, avg_confidence: 0 });
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     attendanceApi
       .todayMine()
       .then((response) => {
@@ -13,8 +15,15 @@ export default function StudentDashboard() {
       })
       .catch((error) => {
         setMessage(error?.response?.data?.detail || "Failed to load your attendance summary.");
+      })
+      .finally(() => {
+        setLoading(false);
       });
   }, []);
+
+  if (loading) {
+    return <div className="card text-sm">Loading your attendance summary...</div>;
+  }
 
   return (
     <div className="space-y-4">

@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AttendanceRead(BaseModel):
@@ -20,4 +20,4 @@ class AttendanceTodaySummary(BaseModel):
 
 class AttendanceUpdate(BaseModel):
     timestamp: datetime
-    confidence_score: float
+    confidence_score: float = Field(ge=0.0, le=1.0)
