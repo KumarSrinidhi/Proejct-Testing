@@ -101,6 +101,10 @@ export const trainingApi = {
   updateLog: (id, payload) => api.put(`/api/train/logs/${id}`, payload),
 };
 
+export const auditApi = {
+  list: (params = {}) => api.get("/api/audit-logs", { params }),
+};
+
 export const videoApi = {
   upload: (formData) => api.post("/api/video/upload", formData),
 };
@@ -109,6 +113,7 @@ export const undetectedFaceApi = {
   list: (params = {}) => api.get("/api/undetected-faces", { params }),
   preview: (id) => api.get(`/api/undetected-faces/${id}/preview`, { responseType: "blob" }),
   remove: (id) => api.delete(`/api/undetected-faces/${id}`),
+  updateReview: (id, payload) => api.put(`/api/undetected-faces/${id}/review`, payload),
   cleanup: () => api.post("/api/undetected-faces/cleanup"),
 };
 

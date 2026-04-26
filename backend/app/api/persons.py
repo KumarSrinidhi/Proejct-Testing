@@ -14,6 +14,7 @@ from app.models.attendance import Attendance
 from app.models.person import Person, PersonImage
 from app.models.user import ROLE_ADMIN, User
 from app.schemas.person import PersonCreate, PersonDetail, PersonImageRead, PersonListResponse, PersonRead, PersonUpdate
+from app.utils.audit import log_audit_event
 from app.utils.file_storage import PERSON_IMAGES_ROOT, save_person_image
 from app.utils.image_quality import validate_training_image
 from app.utils.pagination import paginate_select
@@ -41,7 +42,7 @@ def _is_supported_image_bytes(payload: bytes) -> bool:
 async def create_person(
     payload: PersonCreate,
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ) -> PersonRead:
     existing_person_result = await db.execute(select(Person).where(Person.email == payload.email))
     if existing_person_result.scalar_one_or_none() is not None:
@@ -77,6 +78,14 @@ async def create_person(
 
     await db.commit()
     await db.refresh(person)
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="create_person",
+        entity_type="person",
+        entity_id=person.id,
+        metadata={"email": person.email, "department": person.department, "linked_user": bool(payload.create_user_account)},
+    )
     return PersonRead.model_validate(person)
 
 
@@ -146,7 +155,7 @@ async def update_person(
     person_id: int,
     payload: PersonUpdate,
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ) -> PersonRead:
     result = await db.execute(select(Person).where(Person.id == person_id))
     person = result.scalar_one_or_none()
@@ -158,6 +167,14 @@ async def update_person(
 
     await db.commit()
     await db.refresh(person)
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="update_person",
+        entity_type="person",
+        entity_id=person.id,
+        metadata=payload.model_dump(exclude_none=True),
+    )
     return PersonRead.model_validate(person)
 
 
@@ -165,7 +182,7 @@ async def update_person(
 async def delete_person(
     person_id: int,
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ) -> dict[str, str]:
     result = await db.execute(select(Person).where(Person.id == person_id))
     person = result.scalar_one_or_none()
@@ -174,6 +191,14 @@ async def delete_person(
 
     person.is_active = False
     await db.commit()
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="delete_person",
+        entity_type="person",
+        entity_id=person.id,
+        metadata={"email": person.email, "department": person.department},
+    )
     return {"message": "Person deactivated"}
 
 
@@ -183,7 +208,7 @@ async def upload_person_images(
     request: Request,
     files: list[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ) -> dict[str, object]:
     person_result = await db.execute(select(Person).where(Person.id == person_id, Person.is_active.is_(True)))
     person = person_result.scalar_one_or_none()
@@ -236,6 +261,14 @@ async def upload_person_images(
             results.append({"filename": upload.filename, "status": "failed", "reason": str(exc)})
 
     await db.commit()
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="upload_person_images",
+        entity_type="person",
+        entity_id=person.id,
+        metadata={"filename_count": len(files), "results": results},
+    )
 
     # Optional auto-training.
     try:
@@ -299,7 +332,7 @@ async def delete_image(
     image_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ) -> dict[str, str]:
     result = await db.execute(select(PersonImage).where(PersonImage.id == image_id))
     image = result.scalar_one_or_none()
@@ -308,6 +341,14 @@ async def delete_image(
 
     await db.delete(image)
     await db.commit()
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="delete_person_image",
+        entity_type="person_image",
+        entity_id=image.id,
+        metadata={"person_id": image.person_id, "image_path": image.image_path},
+    )
 
     try:
         await request.app.state.face_service.rebuild_index(db)

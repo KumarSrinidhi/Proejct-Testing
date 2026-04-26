@@ -1,3 +1,4 @@
+from app.schemas.audit_log import AuditLogListResponse, AuditLogRead
 from app.schemas.attendance import AttendanceRead, AttendanceTodaySummary, AttendanceUpdate
 from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse
 from app.schemas.person import PersonCreate, PersonDetail, PersonImageRead, PersonRead, PersonUpdate
@@ -7,6 +8,8 @@ __all__ = [
     "AttendanceRead",
     "AttendanceTodaySummary",
     "AttendanceUpdate",
+    "AuditLogListResponse",
+    "AuditLogRead",
     "LoginRequest",
     "RefreshRequest",
     "TokenResponse",

@@ -7,6 +7,7 @@ export default function UndetectedFacesPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [reviewFilter, setReviewFilter] = useState("pending");
   const [previewUrls, setPreviewUrls] = useState({});
 
   const sortedItems = useMemo(
@@ -18,7 +19,13 @@ export default function UndetectedFacesPage() {
     setLoading(true);
     setMessage("");
     try {
-      const { data } = await undetectedFaceApi.list({ page: 1, page_size: 200 });
+      const params = { page: 1, page_size: 200 };
+      if (reviewFilter === "pending") {
+        params.reviewed = false;
+      } else if (reviewFilter === "reviewed") {
+        params.reviewed = true;
+      }
+      const { data } = await undetectedFaceApi.list(params);
       setItems(data?.items || data || []);
     } catch (error) {
       setMessage(error?.response?.data?.detail || "Failed to load undetected faces.");
@@ -29,7 +36,7 @@ export default function UndetectedFacesPage() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [reviewFilter]);
 
   useEffect(() => {
     const ids = sortedItems.map((item) => item.id);
@@ -90,6 +97,20 @@ export default function UndetectedFacesPage() {
     }
   };
 
+  const toggleReviewed = async (id, reviewed) => {
+    setBusy(true);
+    setMessage("");
+    try {
+      const { data } = await undetectedFaceApi.updateReview(id, { reviewed });
+      setItems((prev) => prev.map((item) => (item.id === id ? { ...item, reviewed: data.reviewed } : item)));
+      setMessage(reviewed ? "Marked as reviewed." : "Marked as pending review.");
+    } catch (error) {
+      setMessage(error?.response?.data?.detail || "Failed to update review state.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const cleanup = async () => {
     setBusy(true);
     setMessage("");
@@ -115,14 +136,21 @@ export default function UndetectedFacesPage() {
           <h2 className="font-display text-xl">Undetected Faces</h2>
           <p className="text-sm text-slate-600">Teacher/Admin review queue. Records auto-retain for 7 days.</p>
         </div>
-        <button
-          type="button"
-          className="rounded bg-ink text-white px-3 py-2"
-          onClick={cleanup}
-          disabled={busy}
-        >
-          {busy ? "Working..." : "Run Cleanup"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <select className="border rounded p-2 text-sm" value={reviewFilter} onChange={(event) => setReviewFilter(event.target.value)}>
+            <option value="pending">Pending review</option>
+            <option value="all">All</option>
+            <option value="reviewed">Reviewed</option>
+          </select>
+          <button
+            type="button"
+            className="rounded bg-ink text-white px-3 py-2"
+            onClick={cleanup}
+            disabled={busy}
+          >
+            {busy ? "Working..." : "Run Cleanup"}
+          </button>
+        </div>
       </div>
 
       {message ? <div className="card text-sm">{message}</div> : null}
@@ -142,14 +170,24 @@ export default function UndetectedFacesPage() {
               </div>
               <div className="text-sm text-slate-700">Source: {item.source_type}</div>
               <div className="text-sm text-slate-700">Captured: {new Date(item.created_at).toLocaleString()}</div>
-              <button
-                type="button"
-                className="rounded bg-red-600 text-white px-3 py-2 w-fit"
-                onClick={() => remove(item.id)}
-                disabled={busy}
-              >
-                Delete
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded bg-ink text-white px-3 py-2 w-fit"
+                  onClick={() => toggleReviewed(item.id, !item.reviewed)}
+                  disabled={busy}
+                >
+                  {item.reviewed ? "Mark Pending" : "Mark Reviewed"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-red-600 text-white px-3 py-2 w-fit"
+                  onClick={() => remove(item.id)}
+                  disabled={busy}
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
         </div>

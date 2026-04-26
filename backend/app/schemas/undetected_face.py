@@ -14,6 +14,10 @@ class UndetectedFaceCleanupResponse(BaseModel):
     deleted_records: int
 
 
+class UndetectedFaceReviewUpdate(BaseModel):
+    reviewed: bool
+
+
 class UndetectedFaceListResponse(BaseModel):
     items: list[UndetectedFaceRead]
     total: int

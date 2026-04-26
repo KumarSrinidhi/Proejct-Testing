@@ -12,6 +12,7 @@ import StudentDashboard from "./pages/StudentDashboard";
 import TrainingPage from "./pages/TrainingPage";
 import TrendsPage from "./pages/TrendsPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
+import AuditLogsPage from "./pages/AuditLogsPage";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -75,6 +76,7 @@ function Layout() {
 
   if (role === "admin") {
     links.push({ to: "/admin/users", label: "Admin Panel" });
+    links.push({ to: "/audit-logs", label: "Audit Logs" });
     links.push({ to: "/heatmap", label: "Heatmap" });
     links.push({ to: "/trends", label: "Trends" });
     links.push({ to: "/persons", label: "Persons" });
@@ -145,6 +147,7 @@ export default function App() {
 
         <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
           <Route path="admin/users" element={<AdminUsersPage />} />
+          <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="heatmap" element={<HeatmapPage />} />
           <Route path="trends" element={<TrendsPage />} />
           <Route path="persons" element={<PersonsPage />} />

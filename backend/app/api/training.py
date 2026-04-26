@@ -7,6 +7,7 @@ from app.api.deps import require_admin
 from app.database import get_db
 from app.models.training_log import TrainingLog
 from app.schemas.training import TrainingLogListResponse, TrainingLogRead, TrainingLogUpdate, TrainingSummary
+from app.utils.audit import log_audit_event
 from app.utils.pagination import paginate_select
 from fastapi import HTTPException, status
 
@@ -18,9 +19,17 @@ router = APIRouter(prefix="/api/train", tags=["training"])
 async def trigger_training(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_admin = Depends(require_admin),
 ) -> TrainingSummary:
     summary = await request.app.state.face_service.rebuild_index(db)
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="trigger_training",
+        entity_type="training",
+        entity_id=None,
+        metadata=summary,
+    )
     return TrainingSummary(**summary, status="success")
 
 

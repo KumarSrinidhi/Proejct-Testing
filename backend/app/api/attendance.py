@@ -14,6 +14,7 @@ from app.models.person import Person
 from app.models.user import User
 from app.schemas.attendance import AttendanceListResponse, AttendanceRead, AttendanceTodaySummary, AttendanceUpdate
 from app.services.analytics_service import AnalyticsService
+from app.utils.audit import log_audit_event
 from app.utils.pagination import paginate_select
 
 
@@ -159,7 +160,7 @@ async def update_attendance(
     attendance_id: int,
     payload: AttendanceUpdate,
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ) -> AttendanceRead:
     result = await db.execute(select(Attendance).where(Attendance.id == attendance_id))
     attendance = result.scalar_one_or_none()
@@ -170,6 +171,14 @@ async def update_attendance(
     attendance.confidence_score = payload.confidence_score
     await db.commit()
     await db.refresh(attendance)
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="update_attendance",
+        entity_type="attendance",
+        entity_id=attendance.id,
+        metadata={"timestamp": payload.timestamp.isoformat(), "confidence_score": payload.confidence_score},
+    )
 
     person_result = await db.execute(select(Person).where(Person.id == attendance.person_id))
     person = person_result.scalar_one_or_none()
@@ -191,7 +200,7 @@ async def update_attendance(
 async def delete_attendance(
     attendance_id: int,
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ) -> dict[str, str]:
     result = await db.execute(select(Attendance).where(Attendance.id == attendance_id))
     attendance = result.scalar_one_or_none()
@@ -200,6 +209,14 @@ async def delete_attendance(
 
     await db.delete(attendance)
     await db.commit()
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="delete_attendance",
+        entity_type="attendance",
+        entity_id=attendance.id,
+        metadata={"person_id": attendance.person_id, "timestamp": attendance.timestamp.isoformat()},
+    )
     return {"message": "Attendance record deleted"}
 
 

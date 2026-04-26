@@ -15,6 +15,7 @@ from app.schemas.auth import (
     UserRead,
     UserRoleUpdateRequest,
 )
+from app.utils.audit import log_audit_event
 from app.utils.pagination import paginate_select
 from app.utils.security import hash_password
 
@@ -88,7 +89,7 @@ async def list_users(
 async def create_user(
     payload: UserCreateRequest,
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ) -> UserRead:
     role = _normalize_role(payload.role)
     email = str(payload.email).strip().lower()
@@ -137,6 +138,15 @@ async def create_user(
     if linked_person is not None:
         await db.refresh(linked_person)
 
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="create_user",
+        entity_type="user",
+        entity_id=user.id,
+        metadata={"username": user.username, "email": user.email, "role": user.role, "linked_person": bool(linked_person)},
+    )
+
     return UserRead(
         id=user.id,
         username=user.username,
@@ -153,7 +163,7 @@ async def update_user_role(
     user_id: int,
     payload: UserRoleUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ) -> UserRead:
     role = _normalize_role(payload.role)
 
@@ -179,6 +189,14 @@ async def update_user_role(
     user.is_admin = role == ROLE_ADMIN
     await db.commit()
     await db.refresh(user)
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="update_user_role",
+        entity_type="user",
+        entity_id=user.id,
+        metadata={"new_role": role},
+    )
     logger.info("User role updated user_id=%s role=%s", user.id, user.role)
 
     return UserRead(
@@ -197,7 +215,7 @@ async def reset_user_password(
     user_id: int,
     payload: UserPasswordResetRequest,
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ) -> dict[str, str]:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -206,6 +224,14 @@ async def reset_user_password(
 
     user.hashed_password = hash_password(payload.password)
     await db.commit()
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="reset_user_password",
+        entity_type="user",
+        entity_id=user.id,
+        metadata={"username": user.username},
+    )
     logger.info("User password reset user_id=%s", user.id)
     return {"message": "Password updated"}
 
@@ -234,5 +260,13 @@ async def delete_user(
 
     await db.delete(user)
     await db.commit()
+    await log_audit_event(
+        db,
+        actor=current_admin,
+        action="delete_user",
+        entity_type="user",
+        entity_id=user.id,
+        metadata={"username": user.username, "role": _effective_role(user)},
+    )
     logger.info("User deleted user_id=%s by_admin_id=%s", user_id, current_admin.id)
     return {"message": "User deleted"}

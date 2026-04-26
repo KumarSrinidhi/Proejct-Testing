@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import attendance, auth, persons, training, undetected_faces, users, video
+from app.api import attendance, audit_logs, auth, persons, training, undetected_faces, users, video
 from app.database import Base, SessionLocal, engine
 from app.models import *  # noqa: F401,F403 - ensure all model metadata is loaded
 from app.models.user import ROLE_ADMIN, ROLE_STUDENT, User
@@ -291,6 +291,7 @@ async def log_request_middleware(request: Request, call_next):
 
 # Include routers
 app.include_router(auth.router)
+app.include_router(audit_logs.router)
 app.include_router(persons.router)
 app.include_router(training.router)
 app.include_router(attendance.router)
