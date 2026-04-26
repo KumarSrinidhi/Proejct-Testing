@@ -12,9 +12,11 @@ from app.api.deps import require_admin
 from app.database import get_db
 from app.models.attendance import Attendance
 from app.models.person import Person, PersonImage
+from app.models.user import ROLE_ADMIN, User
 from app.schemas.person import PersonCreate, PersonDetail, PersonImageRead, PersonRead, PersonUpdate
 from app.utils.file_storage import PERSON_IMAGES_ROOT, save_person_image
 from app.utils.image_utils import bytes_to_cv2_image
+from app.utils.security import hash_password
 from app.config import get_settings
 
 
@@ -39,8 +41,38 @@ async def create_person(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> PersonRead:
+    existing_person_result = await db.execute(select(Person).where(Person.email == payload.email))
+    if existing_person_result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Person with this email already exists")
+
+    existing_user_email_result = await db.execute(select(User).where(User.email == payload.email))
+    if existing_user_email_result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email already exists")
+
     person = Person(name=payload.name, email=payload.email, department=payload.department)
     db.add(person)
+
+    if payload.create_user_account:
+        if not payload.username or not payload.password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username and password are required when creating a linked user",
+            )
+
+        existing_user_result = await db.execute(select(User).where(User.username == payload.username))
+        if existing_user_result.scalar_one_or_none() is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+
+        normalized_role = payload.role.strip().lower()
+        user = User(
+            username=payload.username,
+            email=str(payload.email),
+            hashed_password=hash_password(payload.password),
+            role=normalized_role,
+            is_admin=normalized_role == ROLE_ADMIN,
+        )
+        db.add(user)
+
     await db.commit()
     await db.refresh(person)
     return PersonRead.model_validate(person)

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.login_attempt import LoginAttempt
-from app.models.user import User
+from app.models.user import ROLE_ADMIN, ROLE_STUDENT, ROLE_TEACHER, User
 from app.utils.security import decode_token, TokenError
 from app.config import get_settings
 
@@ -45,9 +45,22 @@ async def get_current_user(
 
 
 async def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if not current_user.is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-    return current_user
+    if current_user.role == ROLE_ADMIN or current_user.is_admin:
+        return current_user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
+
+def require_roles(*allowed_roles: str):
+    async def _require_roles(current_user: User = Depends(get_current_user)) -> User:
+        normalized = current_user.role or (ROLE_ADMIN if current_user.is_admin else ROLE_STUDENT)
+        if normalized in allowed_roles:
+            return current_user
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    return _require_roles
+
+
+require_teacher_or_admin = require_roles(ROLE_ADMIN, ROLE_TEACHER)
 
 
 async def check_login_rate_limit(username: str, db: AsyncSession) -> None:

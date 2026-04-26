@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import { attendanceApi } from "../services/api";
 
 export default function AttendancePage() {
   const [records, setRecords] = useState([]);
   const [deletingId, setDeletingId] = useState(null);
   const [message, setMessage] = useState("");
+  const { role, isAdmin } = useAuth();
+  const isStudent = role === "student";
 
   const load = async () => {
-    const { data } = await attendanceApi.list();
+    const request = isStudent ? attendanceApi.listMine() : attendanceApi.list();
+    const { data } = await request;
     setRecords(data);
   };
 
@@ -16,6 +20,7 @@ export default function AttendancePage() {
   }, []);
 
   const exportCsv = async () => {
+    if (!isAdmin) return;
     const { data } = await attendanceApi.exportCsv();
     const url = window.URL.createObjectURL(new Blob([data]));
     const link = document.createElement("a");
@@ -26,6 +31,7 @@ export default function AttendancePage() {
   };
 
   const deleteRecord = async (id) => {
+    if (!isAdmin) return;
     const confirmed = window.confirm("Delete this attendance record?");
     if (!confirmed) return;
 
@@ -46,7 +52,9 @@ export default function AttendancePage() {
     <div className="card">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-display text-lg">Attendance Logs</h3>
-        <button onClick={exportCsv} className="rounded bg-accent text-white px-3 py-2">Export CSV</button>
+        {isAdmin ? (
+          <button onClick={exportCsv} className="rounded bg-accent text-white px-3 py-2">Export CSV</button>
+        ) : null}
       </div>
       {message ? <div className="mb-3 text-sm">{message}</div> : null}
       <div className="overflow-auto">
@@ -57,7 +65,7 @@ export default function AttendancePage() {
               <th className="p-2">Department</th>
               <th className="p-2">Timestamp</th>
               <th className="p-2">Confidence</th>
-              <th className="p-2">Actions</th>
+              {isAdmin ? <th className="p-2">Actions</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -67,15 +75,17 @@ export default function AttendancePage() {
                 <td className="p-2">{row.department}</td>
                 <td className="p-2">{new Date(row.timestamp).toLocaleString()}</td>
                 <td className="p-2">{row.confidence_score.toFixed(3)}</td>
-                <td className="p-2">
-                  <button
-                    className="rounded bg-red-600 text-white px-2 py-1"
-                    onClick={() => deleteRecord(row.id)}
-                    disabled={deletingId === row.id}
-                  >
-                    {deletingId === row.id ? "Deleting..." : "Delete"}
-                  </button>
-                </td>
+                {isAdmin ? (
+                  <td className="p-2">
+                    <button
+                      className="rounded bg-red-600 text-white px-2 py-1"
+                      onClick={() => deleteRecord(row.id)}
+                      disabled={deletingId === row.id}
+                    >
+                      {deletingId === row.id ? "Deleting..." : "Delete"}
+                    </button>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

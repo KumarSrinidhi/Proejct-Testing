@@ -6,6 +6,10 @@ class PersonCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     email: EmailStr
     department: str = Field(min_length=1, max_length=200)
+    create_user_account: bool = False
+    username: str | None = Field(default=None, min_length=3, max_length=150)
+    password: str | None = Field(default=None, min_length=6, max_length=128)
+    role: str = Field(default="student", pattern="^(admin|teacher|student)$")
 
 
 class PersonUpdate(BaseModel):

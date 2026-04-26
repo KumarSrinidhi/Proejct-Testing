@@ -67,7 +67,7 @@ export const personApi = {
   create: (payload) => api.post("/api/persons", payload),
   update: (id, payload) => api.put(`/api/persons/${id}`, payload),
   remove: (id) => api.delete(`/api/persons/${id}`),
-  uploadImages: (id, formData) => api.post(`/api/persons/${id}/images`, formData),
+  uploadImages: (id, formData, options = {}) => api.post(`/api/persons/${id}/images`, formData, options),
   listImages: (id) => api.get(`/api/persons/${id}/images`),
   previewImage: (imageId) => api.get(`/api/images/${imageId}/preview`, { responseType: "blob" }),
   deleteImage: (imageId) => api.delete(`/api/images/${imageId}`),
@@ -75,12 +75,22 @@ export const personApi = {
 
 export const attendanceApi = {
   list: (params = {}) => api.get("/api/attendance", { params }),
+  listMine: (params = {}) => api.get("/api/attendance/mine", { params }),
   update: (id, payload) => api.put(`/api/attendance/${id}`, payload),
   remove: (id) => api.delete(`/api/attendance/${id}`),
   today: () => api.get("/api/attendance/today"),
+  todayMine: () => api.get("/api/attendance/mine/today"),
   heatmap: () => api.get("/api/attendance/heatmap"),
   trends: () => api.get("/api/attendance/trends"),
   exportCsv: (params = {}) => api.get("/api/attendance/export", { params, responseType: "blob" }),
+};
+
+export const userApi = {
+  list: () => api.get("/api/users"),
+  create: (payload) => api.post("/api/users", payload),
+  updateRole: (id, role) => api.put(`/api/users/${id}/role`, { role }),
+  updatePassword: (id, password) => api.put(`/api/users/${id}/password`, { password }),
+  remove: (id) => api.delete(`/api/users/${id}`),
 };
 
 export const trainingApi = {

@@ -7,10 +7,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import require_admin
+from app.api.deps import get_current_user, require_admin, require_teacher_or_admin
 from app.database import get_db
 from app.models.attendance import Attendance
 from app.models.person import Person
+from app.models.user import User
 from app.schemas.attendance import AttendanceRead, AttendanceTodaySummary, AttendanceUpdate
 from app.services.analytics_service import AnalyticsService
 
@@ -28,7 +29,7 @@ async def list_attendance(
     person_id: int | None = Query(default=None),
     department: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_teacher_or_admin),
 ) -> list[AttendanceRead]:
     query = (
         select(Attendance, Person.name, Person.department)
@@ -68,7 +69,7 @@ async def list_attendance(
 @router.get("/today", response_model=AttendanceTodaySummary)
 async def get_today_summary(
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_teacher_or_admin),
 ) -> AttendanceTodaySummary:
     now = datetime.now(timezone.utc)
     day_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
@@ -121,7 +122,7 @@ async def export_csv(
 @router.get("/heatmap")
 async def get_heatmap(
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_teacher_or_admin),
 ) -> dict[str, object]:
     return await analytics_service.get_heatmap_data(db)
 
@@ -129,7 +130,7 @@ async def get_heatmap(
 @router.get("/trends")
 async def get_trends(
     db: AsyncSession = Depends(get_db),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_teacher_or_admin),
 ) -> dict[str, object]:
     return await analytics_service.get_trends(db)
 
@@ -181,3 +182,65 @@ async def delete_attendance(
     await db.delete(attendance)
     await db.commit()
     return {"message": "Attendance record deleted"}
+
+
+@router.get("/mine", response_model=list[AttendanceRead])
+async def list_my_attendance(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[AttendanceRead]:
+    identity_email = current_user.email or current_user.username
+    query = (
+        select(Attendance, Person.name, Person.department)
+        .join(Person, Person.id == Attendance.person_id)
+        .where(Person.email == identity_email)
+        .order_by(Attendance.timestamp.desc())
+    )
+    result = await db.execute(query.offset((page - 1) * page_size).limit(page_size))
+    rows = result.all()
+    return [
+        AttendanceRead(
+            id=attendance.id,
+            person_id=attendance.person_id,
+            person_name=name,
+            department=dept,
+            timestamp=attendance.timestamp,
+            confidence_score=attendance.confidence_score,
+            cropped_face_path=attendance.cropped_face_path,
+        )
+        for attendance, name, dept in rows
+    ]
+
+
+@router.get("/mine/today", response_model=AttendanceTodaySummary)
+async def get_my_today_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AttendanceTodaySummary:
+    identity_email = current_user.email or current_user.username
+    now = datetime.now(timezone.utc)
+    day_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+
+    total_result = await db.execute(
+        select(func.count(Attendance.id))
+        .join(Person, Person.id == Attendance.person_id)
+        .where(Attendance.timestamp >= day_start, Person.email == identity_email)
+    )
+    unique_result = await db.execute(
+        select(func.count(func.distinct(Attendance.person_id)))
+        .join(Person, Person.id == Attendance.person_id)
+        .where(Attendance.timestamp >= day_start, Person.email == identity_email)
+    )
+    avg_result = await db.execute(
+        select(func.avg(Attendance.confidence_score))
+        .join(Person, Person.id == Attendance.person_id)
+        .where(Attendance.timestamp >= day_start, Person.email == identity_email)
+    )
+
+    return AttendanceTodaySummary(
+        total_today=int(total_result.scalar() or 0),
+        unique_today=int(unique_result.scalar() or 0),
+        avg_confidence=float(avg_result.scalar() or 0.0),
+    )

@@ -1,17 +1,19 @@
 import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import { authApi } from "../services/api";
 
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const { refreshUser } = useAuth();
 
   const submit = async (event) => {
     event.preventDefault();
     setError("");
     try {
       await authApi.login(username, password);
-      sessionStorage.setItem("is_authed", "1");
+      await refreshUser();
       window.location.href = "/";
     } catch (err) {
       // Security: Only show generic error to prevent user enumeration

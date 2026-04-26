@@ -273,22 +273,28 @@ export default function LiveRecognitionPage() {
             <option value="rtsp">RTSP</option>
           </select>
         </label>
-        <label className="flex flex-col text-sm grow">
-          Source Path
-          <input className="border rounded p-2" value={sourcePath} onChange={(e) => setSourcePath(e.target.value)} />
-        </label>
-        <label className="flex flex-col text-sm grow">
-          Add Video
-          <input
-            type="file"
-            accept="video/mp4,video/avi,video/quicktime,video/x-matroska,video/webm"
-            className="border rounded p-2"
-            onChange={handleVideoFileChange}
-          />
-        </label>
-        <button onClick={uploadVideo} className="rounded bg-accent text-white px-4 py-2" disabled={uploading}>
-          {uploading ? "Uploading..." : "Upload Video"}
-        </button>
+        {sourceType === "rtsp" ? (
+          <label className="flex flex-col text-sm grow">
+            Source Path
+            <input className="border rounded p-2" value={sourcePath} onChange={(e) => setSourcePath(e.target.value)} />
+          </label>
+        ) : null}
+        {sourceType === "file" ? (
+          <>
+            <label className="flex flex-col text-sm grow">
+              Add Video
+              <input
+                type="file"
+                accept="video/mp4,video/avi,video/quicktime,video/x-matroska,video/webm"
+                className="border rounded p-2"
+                onChange={handleVideoFileChange}
+              />
+            </label>
+            <button onClick={uploadVideo} className="rounded bg-accent text-white px-4 py-2" disabled={uploading}>
+              {uploading ? "Uploading..." : "Upload Video"}
+            </button>
+          </>
+        ) : null}
         <button onClick={start} className="rounded bg-mint text-white px-4 py-2">Start</button>
         <button onClick={stop} className="rounded bg-slate-700 text-white px-4 py-2">Stop</button>
       </div>

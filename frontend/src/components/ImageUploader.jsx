@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function ImageUploader({ onUpload, selectedPersonId, uploading }) {
+export default function ImageUploader({ onUpload, selectedPersonId, uploading, uploadPercent = 0 }) {
   const [files, setFiles] = useState([]);
 
   const submit = async (event) => {
@@ -31,6 +31,20 @@ export default function ImageUploader({ onUpload, selectedPersonId, uploading })
       >
         {uploading ? "Uploading..." : "Validate & Upload"}
       </button>
+      {uploading ? (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-xs text-slate-600">
+            <span>Upload progress</span>
+            <span>{uploadPercent}%</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded bg-slate-200">
+            <div
+              className="h-full bg-accent transition-all duration-200"
+              style={{ width: `${uploadPercent}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
     </form>
   );
 }

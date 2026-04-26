@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import check_login_rate_limit, record_login_attempt
 from app.database import get_db
 from app.api.deps import get_current_user
-from app.models.user import User
-from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse
+from app.models.user import ROLE_ADMIN, ROLE_STUDENT, User
+from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse, UserMeResponse
 from app.config import get_settings
 from app.utils.security import (
     TokenError,
@@ -60,7 +60,16 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
         samesite="lax",
         path="/",
     )
-    return TokenResponse(access_token=access_token, refresh_token=refresh_token, expires_at=expires_at)
+    role = user.role or (ROLE_ADMIN if user.is_admin else ROLE_STUDENT)
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=expires_at,
+        username=user.username,
+        role=role,
+        is_admin=bool(user.is_admin),
+        email=user.email,
+    )
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -112,7 +121,16 @@ async def refresh(
         samesite="lax",
         path="/",
     )
-    return TokenResponse(access_token=access_token, refresh_token=refresh_token, expires_at=expires_at)
+    role = user.role or (ROLE_ADMIN if user.is_admin else ROLE_STUDENT)
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=expires_at,
+        username=user.username,
+        role=role,
+        is_admin=bool(user.is_admin),
+        email=user.email,
+    )
 
 
 @router.post("/logout")
@@ -122,9 +140,12 @@ async def logout(response: Response) -> dict[str, str]:
     return {"message": "Logged out"}
 
 
-@router.get("/me")
-async def me(current_user: User = Depends(get_current_user)) -> dict[str, object]:
-    return {
-        "username": current_user.username,
-        "is_admin": current_user.is_admin,
-    }
+@router.get("/me", response_model=UserMeResponse)
+async def me(current_user: User = Depends(get_current_user)) -> UserMeResponse:
+    role = current_user.role or (ROLE_ADMIN if current_user.is_admin else ROLE_STUDENT)
+    return UserMeResponse(
+        username=current_user.username,
+        is_admin=bool(current_user.is_admin),
+        role=role,
+        email=current_user.email,
+    )

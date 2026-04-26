@@ -291,13 +291,6 @@ secrets.yml
 # IDE & EDITOR SPECIFIC
 # ============================================================================
 
-# VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/launch.json
-!.vscode/tasks.json
-**/!.vscode/*.code-workspace
-
 # JetBrains IDEs
 .idea/
 *.iml
@@ -369,6 +362,14 @@ npm-cache/
 .yarn/cache/
 .yarn/install-state.gz
 
+# Additional frontend/local tooling artifacts
+frontend/coverage/
+frontend/.eslintcache
+.pnpm-store/
+.turbo/
+.vercel/
+*.tsbuildinfo
+
 # ============================================================================
 # PYTHON SPECIFIC
 # ============================================================================
@@ -385,6 +386,15 @@ pyproject.toml.backup
 
 # Pipenv
 Pipfile.lock
+
+# Local Python/tooling state
+.python-version
+.direnv/
+.envrc
+.hypothesis/
+.nox/
+.pyre/
+.coverage.*
 
 # ============================================================================
 # RUNTIME & APPLICATION STATE

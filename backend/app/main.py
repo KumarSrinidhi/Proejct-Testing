@@ -2,13 +2,13 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import attendance, auth, persons, training, video
+from app.api import attendance, auth, persons, training, users, video
 from app.database import Base, SessionLocal, engine
 from app.models import *  # noqa: F401,F403 - ensure all model metadata is loaded
-from app.models.user import User
+from app.models.user import ROLE_ADMIN, ROLE_STUDENT, User
 from app.services.attendance_service import AttendanceService
 from app.services.face_recognition import FaceRecognitionService
 from app.config import get_settings
@@ -66,6 +66,12 @@ async def lifespan(app: FastAPI):
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+                table_info = await conn.execute(text("PRAGMA table_info(users)"))
+                user_columns = {row[1] for row in table_info.fetchall()}
+                if "role" not in user_columns:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(20)"))
+                if "email" not in user_columns:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR(200)"))
             logger.info("Database tables created/verified")
         except SQLAlchemyError as e:
             logger.error(f"Failed to create database tables: {e}")
@@ -77,6 +83,24 @@ async def lifespan(app: FastAPI):
                 raise RuntimeError("ADMIN_PASSWORD must be set to a strong value in production")
 
             async with SessionLocal() as db:
+                # Keep existing rows compatible when upgrading from older schemas.
+                await db.execute(
+                    text(
+                        "UPDATE users "
+                        "SET role = CASE WHEN is_admin = 1 THEN :admin ELSE :student END "
+                        "WHERE role IS NULL OR role = ''"
+                    ),
+                    {"admin": ROLE_ADMIN, "student": ROLE_STUDENT},
+                )
+                await db.execute(
+                    text(
+                        "UPDATE users "
+                        "SET email = username "
+                        "WHERE (email IS NULL OR email = '') AND username LIKE '%@%'"
+                    )
+                )
+                await db.commit()
+
                 result = await db.execute(
                     select(User).where(User.username == settings.admin_username)
                 )
@@ -85,12 +109,27 @@ async def lifespan(app: FastAPI):
                     db.add(
                         User(
                             username=settings.admin_username,
+                            email=f"{settings.admin_username}@local",
                             hashed_password=hash_password(settings.admin_password),
                             is_admin=True,
+                            role=ROLE_ADMIN,
                         )
                     )
                     await db.commit()
                     logger.info(f"Created default admin user: {settings.admin_username}")
+                else:
+                    changed = False
+                    if user.role != ROLE_ADMIN:
+                        user.role = ROLE_ADMIN
+                        changed = True
+                    if not user.is_admin:
+                        user.is_admin = True
+                        changed = True
+                    if not user.email:
+                        user.email = f"{user.username}@local"
+                        changed = True
+                    if changed:
+                        await db.commit()
         except SQLAlchemyError as e:
             logger.error(f"Failed to create admin user: {e}")
             raise RuntimeError("Failed to initialize admin user") from e
@@ -149,6 +188,7 @@ app.include_router(auth.router)
 app.include_router(persons.router)
 app.include_router(training.router)
 app.include_router(attendance.router)
+app.include_router(users.router)
 app.include_router(video.router)
 app.include_router(ws_router)
 

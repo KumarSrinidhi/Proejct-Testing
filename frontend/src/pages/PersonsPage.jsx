@@ -4,10 +4,19 @@ import ImageUploader from "../components/ImageUploader";
 
 export default function PersonsPage() {
   const [persons, setPersons] = useState([]);
-  const [form, setForm] = useState({ name: "", email: "", department: "" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    department: "",
+    create_user_account: false,
+    username: "",
+    password: "",
+    role: "student",
+  });
   const [selectedPersonId, setSelectedPersonId] = useState(null);
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
   const [editingPersonId, setEditingPersonId] = useState(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", department: "" });
 
@@ -30,7 +39,15 @@ export default function PersonsPage() {
   const create = async (event) => {
     event.preventDefault();
     await personApi.create(form);
-    setForm({ name: "", email: "", department: "" });
+    setForm({
+      name: "",
+      email: "",
+      department: "",
+      create_user_account: false,
+      username: "",
+      password: "",
+      role: "student",
+    });
     await loadPersons();
   };
 
@@ -42,12 +59,22 @@ export default function PersonsPage() {
     const formData = new FormData();
     files.forEach((file) => formData.append("files", file));
     setUploading(true);
+    setUploadPercent(0);
     setUploadMessage("");
 
     try {
-      const { data } = await personApi.uploadImages(selectedPersonId, formData);
+      const { data } = await personApi.uploadImages(selectedPersonId, formData, {
+        onUploadProgress: (event) => {
+          if (!event?.total) {
+            return;
+          }
+          const nextPercent = Math.min(100, Math.round((event.loaded * 100) / event.total));
+          setUploadPercent(nextPercent);
+        },
+      });
       const okCount = (data?.results || []).filter((r) => r.status === "ok").length;
       const failed = (data?.results || []).filter((r) => r.status !== "ok");
+      setUploadPercent(100);
       if (failed.length) {
         const firstReason = failed[0]?.reason || "Validation failed";
         setUploadMessage(`Uploaded ${okCount} image(s). ${failed.length} failed: ${firstReason}`);
@@ -118,8 +145,42 @@ export default function PersonsPage() {
       <form onSubmit={create} className="card space-y-2">
         <h3 className="font-display text-lg">Create Person</h3>
         <input className="w-full border rounded p-2" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <input className="w-full border rounded p-2" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+        <input className="w-full border rounded p-2" type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <input className="w-full border rounded p-2" placeholder="Department" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={form.create_user_account}
+            onChange={(e) => setForm({ ...form, create_user_account: e.target.checked })}
+          />
+          Create linked login user
+        </label>
+        {form.create_user_account ? (
+          <>
+            <input
+              className="w-full border rounded p-2"
+              placeholder="Username"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+            />
+            <input
+              className="w-full border rounded p-2"
+              type="password"
+              placeholder="Password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+            <select
+              className="w-full border rounded p-2"
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
+            >
+              <option value="student">student</option>
+              <option value="teacher">teacher</option>
+              <option value="admin">admin</option>
+            </select>
+          </>
+        ) : null}
         <button className="bg-accent text-white rounded px-3 py-2">Create</button>
       </form>
 
@@ -201,7 +262,12 @@ export default function PersonsPage() {
         </div>
       </div>
 
-      <ImageUploader onUpload={upload} selectedPersonId={selectedPersonId} uploading={uploading} />
+      <ImageUploader
+        onUpload={upload}
+        selectedPersonId={selectedPersonId}
+        uploading={uploading}
+        uploadPercent={uploadPercent}
+      />
 
       {uploadMessage ? (
         <div className="card text-sm">
