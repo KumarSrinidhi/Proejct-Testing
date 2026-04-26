@@ -5,12 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import attendance, auth, persons, training, users, video
+from app.api import attendance, auth, persons, training, undetected_faces, users, video
 from app.database import Base, SessionLocal, engine
 from app.models import *  # noqa: F401,F403 - ensure all model metadata is loaded
 from app.models.user import ROLE_ADMIN, ROLE_STUDENT, User
 from app.services.attendance_service import AttendanceService
 from app.services.face_recognition import FaceRecognitionService
+from app.services.undetected_face_service import UndetectedFaceService
 from app.config import get_settings
 from app.utils.security import ensure_password_hashing_compatibility, hash_password
 from app.websocket.stream_handler import router as ws_router
@@ -146,6 +147,13 @@ async def lifespan(app: FastAPI):
 
         # Initialize attendance service
         app.state.attendance_service = AttendanceService()
+        app.state.undetected_face_service = UndetectedFaceService()
+
+        try:
+            async with SessionLocal() as db:
+                await app.state.undetected_face_service.cleanup_expired(db)
+        except Exception as e:
+            logger.warning(f"Failed to run undetected-face cleanup: {e}")
 
         # Rebuild index if needed
         try:
@@ -189,6 +197,7 @@ app.include_router(persons.router)
 app.include_router(training.router)
 app.include_router(attendance.router)
 app.include_router(users.router)
+app.include_router(undetected_faces.router)
 app.include_router(video.router)
 app.include_router(ws_router)
 

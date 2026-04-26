@@ -105,4 +105,11 @@ export const videoApi = {
   upload: (formData) => api.post("/api/video/upload", formData),
 };
 
+export const undetectedFaceApi = {
+  list: () => api.get("/api/undetected-faces"),
+  preview: (id) => api.get(`/api/undetected-faces/${id}/preview`, { responseType: "blob" }),
+  remove: (id) => api.delete(`/api/undetected-faces/${id}`),
+  cleanup: () => api.post("/api/undetected-faces/cleanup"),
+};
+
 export default api;

@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 DATA_ROOT = Path("data")
 PERSON_IMAGES_ROOT = DATA_ROOT / "uploads" / "person_images"
 ATTENDANCE_CROPS_ROOT = DATA_ROOT / "uploads" / "attendance_crops"
+UNDETECTED_FACES_ROOT = DATA_ROOT / "uploads" / "undetected_faces"
 VIDEO_UPLOADS_ROOT = DATA_ROOT / "uploads" / "videos"
 MODEL_ROOT = DATA_ROOT / "models"
 
@@ -27,7 +28,7 @@ def _safe_filename(filename: str, fallback_ext: str = "") -> str:
 
 
 def ensure_storage_dirs() -> None:
-    for path in [PERSON_IMAGES_ROOT, ATTENDANCE_CROPS_ROOT, VIDEO_UPLOADS_ROOT, MODEL_ROOT]:
+    for path in [PERSON_IMAGES_ROOT, ATTENDANCE_CROPS_ROOT, UNDETECTED_FACES_ROOT, VIDEO_UPLOADS_ROOT, MODEL_ROOT]:
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -57,6 +58,18 @@ def save_cropped_face(person_id: int, cropped_face: np.ndarray, timestamp: datet
     if not ok:
         raise RuntimeError("Failed to write cropped face image")
     logger.info("Saved cropped face", extra={"path": str(file_path), "person_id": person_id})
+    return str(file_path)
+
+
+def save_undetected_face(cropped_face: np.ndarray, timestamp: datetime) -> str:
+    ensure_storage_dirs()
+    day_dir = UNDETECTED_FACES_ROOT / str(timestamp.year) / f"{timestamp.month:02d}" / f"{timestamp.day:02d}"
+    day_dir.mkdir(parents=True, exist_ok=True)
+    file_path = day_dir / f"unknown_{int(timestamp.timestamp())}_{secrets.token_hex(4)}.jpg"
+    ok = cv2.imwrite(str(file_path), cropped_face)
+    if not ok:
+        raise RuntimeError("Failed to write undetected face image")
+    logger.info("Saved undetected face", extra={"path": str(file_path)})
     return str(file_path)
 
 

@@ -2,6 +2,7 @@ import { Component } from "react";
 import { NavLink, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import AttendancePage from "./pages/AttendancePage";
+import UndetectedFacesPage from "./pages/UndetectedFacesPage";
 import Dashboard from "./pages/Dashboard";
 import HeatmapPage from "./pages/HeatmapPage";
 import LiveRecognitionPage from "./pages/LiveRecognitionPage";
@@ -68,6 +69,10 @@ function Layout() {
   links.push({ to: "/", label: role === "student" ? "My Dashboard" : "Dashboard" });
   links.push({ to: "/attendance", label: "Attendance" });
 
+  if (role === "admin" || role === "teacher") {
+    links.push({ to: "/undetected-faces", label: "Undetected Faces" });
+  }
+
   if (role === "admin") {
     links.push({ to: "/admin/users", label: "Admin Panel" });
     links.push({ to: "/heatmap", label: "Heatmap" });
@@ -132,6 +137,10 @@ export default function App() {
 
         <Route element={<ProtectedRoute allowedRoles={["admin", "teacher", "student"]} />}>
           <Route path="attendance" element={<AttendancePage />} />
+        </Route>
+
+        <Route element={<ProtectedRoute allowedRoles={["admin", "teacher"]} />}>
+          <Route path="undetected-faces" element={<UndetectedFacesPage />} />
         </Route>
 
         <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>

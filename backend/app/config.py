@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     max_image_upload_bytes: int = 5 * 1024 * 1024
     max_video_upload_bytes: int = 100 * 1024 * 1024
     max_ws_frame_bytes: int = 2 * 1024 * 1024
+    undetected_face_retention_days: int = 7
+    undetected_face_capture_cooldown_seconds: int = 15
 
     @property
     def is_production(self) -> bool:

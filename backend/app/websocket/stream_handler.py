@@ -43,6 +43,8 @@ async def _process_frame(
     frame: np.ndarray,
     face_service,
     attendance_service,
+    undetected_face_service,
+    source_type: str,
 ) -> None:
     started = perf_counter()
     async with SessionLocal() as db:
@@ -64,6 +66,13 @@ async def _process_frame(
                 attendance_marked = ok
                 message = mark_message
                 any_match = True
+            elif face is not None:
+                try:
+                    cropped = crop_face(frame, face.bbox)
+                    if cropped.size > 0:
+                        await undetected_face_service.capture_unknown_face(db, cropped, source_type)
+                except Exception as exc:
+                    logger.warning("Failed to capture undetected face: %s", exc)
 
             faces_payload.append(
                 {
@@ -123,6 +132,7 @@ async def process_stream_socket(websocket: WebSocket) -> None:
 
     face_service = websocket.app.state.face_service
     attendance_service = websocket.app.state.attendance_service
+    undetected_face_service = websocket.app.state.undetected_face_service
 
     if source_type == "file" and source_path:
         resolved_source = Path(source_path).resolve()
@@ -135,7 +145,14 @@ async def process_stream_socket(websocket: WebSocket) -> None:
     ingestion = VideoIngestionService(source_type=source_type, source_path=source_path)
 
     async def on_frame(frame) -> None:
-        await _process_frame(websocket, frame, face_service, attendance_service)
+        await _process_frame(
+            websocket,
+            frame,
+            face_service,
+            attendance_service,
+            undetected_face_service,
+            source_type,
+        )
 
     try:
         if source_type == "browser_webcam":
@@ -158,7 +175,14 @@ async def process_stream_socket(websocket: WebSocket) -> None:
                     await websocket.send_json({"type": "error", "message": "Invalid webcam frame payload"})
                     continue
 
-                await _process_frame(websocket, frame, face_service, attendance_service)
+                await _process_frame(
+                    websocket,
+                    frame,
+                    face_service,
+                    attendance_service,
+                    undetected_face_service,
+                    source_type,
+                )
         else:
             await ingestion.process_stream(on_frame)
 
