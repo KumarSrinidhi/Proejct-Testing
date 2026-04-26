@@ -204,5 +204,33 @@ app.include_router(ws_router)
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    """Health check endpoint."""
+    """Basic liveness check endpoint."""
     return {"status": "ok"}
+
+
+@app.get("/api/health")
+async def api_health() -> dict[str, object]:
+    """Readiness check endpoint with dependency status."""
+    db_status = "ok"
+    try:
+        async with SessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+    except Exception as exc:
+        db_status = "error"
+        logger.error("Health check database ping failed: %s", exc)
+
+    face_service_ready = bool(getattr(app.state, "face_service", None))
+    attendance_service_ready = bool(getattr(app.state, "attendance_service", None))
+
+    status_value = "ok"
+    if db_status != "ok" or not face_service_ready or not attendance_service_ready:
+        status_value = "degraded"
+
+    return {
+        "status": status_value,
+        "checks": {
+            "database": db_status,
+            "face_service": "ok" if face_service_ready else "missing",
+            "attendance_service": "ok" if attendance_service_ready else "missing",
+        },
+    }

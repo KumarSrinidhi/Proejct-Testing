@@ -16,6 +16,7 @@ export default function LiveRecognitionPage() {
   const [frameSize, setFrameSize] = useState({ width: 1, height: 1 });
   const [currentFps, setCurrentFps] = useState(0);
   const [processingMs, setProcessingMs] = useState(0);
+  const [connectionState, setConnectionState] = useState("idle");
   const socketRef = useRef(null);
   const frameIntervalRef = useRef(null);
   const lastRecognitionTsRef = useRef(0);
@@ -23,6 +24,22 @@ export default function LiveRecognitionPage() {
   const webcamStreamRef = useRef(null);
   const videoRef = useRef(null);
   const captureCanvasRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const manualStopRef = useRef(false);
+  const activeStreamConfigRef = useRef(null);
+  const sourceTypeRef = useRef(sourceType);
+
+  useEffect(() => {
+    sourceTypeRef.current = sourceType;
+  }, [sourceType]);
+
+  const clearReconnectTimer = () => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  };
 
   const stopBrowserFrameStream = () => {
     if (frameIntervalRef.current) {
@@ -91,6 +108,8 @@ export default function LiveRecognitionPage() {
 
   useEffect(() => {
     return () => {
+      manualStopRef.current = true;
+      clearReconnectTimer();
       stopBrowserFrameStream();
       stopLocalPreview();
       if (previewObjectUrlRef.current) {
@@ -118,44 +137,10 @@ export default function LiveRecognitionPage() {
     videoRef.current.srcObject = null;
   }, [previewMode, previewUrl]);
 
-  const uploadVideo = async () => {
-    if (!videoFile) {
-      setStatusMessage("Choose a video file first.");
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("file", videoFile);
-    setUploading(true);
-    setStatusMessage("");
-
-    try {
-      const { data } = await videoApi.upload(formData);
-      setSourceType("file");
-      setSourcePath(data.video_path || "");
-      setStatusMessage("Video uploaded. You can start live processing now.");
-      await startLocalPreview();
-    } catch (error) {
-      setStatusMessage(error?.response?.data?.detail || "Video upload failed.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const start = async () => {
-    if (sourceType === "file" && !sourcePath) {
-      setStatusMessage("Upload a video or enter a valid server file path.");
-      return;
-    }
-    await startLocalPreview();
-    stopBrowserFrameStream();
-    if (socketRef.current) {
-      socketRef.current.close();
-    }
-
-    const wsSourceType = sourceType === "webcam" ? "browser_webcam" : sourceType;
+  const connectSocket = (streamConfig) => {
+    setConnectionState("connecting");
     const socket = createRecognitionSocket(
-      { source_type: wsSourceType, source_path: sourcePath || null },
+      streamConfig,
       (payload) => {
         if (payload.type === "recognition") {
           const now = performance.now();
@@ -202,29 +187,108 @@ export default function LiveRecognitionPage() {
       () => {
         stopBrowserFrameStream();
         socketRef.current = null;
+        if (manualStopRef.current) {
+          setConnectionState("idle");
+          return;
+        }
+        const nextAttempt = reconnectAttemptsRef.current + 1;
+        reconnectAttemptsRef.current = nextAttempt;
+        if (nextAttempt > 5) {
+          setConnectionState("error");
+          setStatusMessage("Connection lost. Retry limit reached.");
+          return;
+        }
+        const delayMs = Math.min(1000 * 2 ** (nextAttempt - 1), 10000);
+        setConnectionState("reconnecting");
+        setStatusMessage(`Connection lost. Reconnecting in ${Math.round(delayMs / 1000)}s...`);
+        clearReconnectTimer();
+        reconnectTimerRef.current = setTimeout(() => {
+          if (!manualStopRef.current && activeStreamConfigRef.current) {
+            connectSocket(activeStreamConfigRef.current);
+            if (sourceTypeRef.current === "webcam") {
+              startBrowserFrameStream();
+            }
+          }
+        }, delayMs);
+      },
+      () => {
+        setConnectionState("error");
+        setStatusMessage("WebSocket connection error.");
+      },
+      () => {
+        reconnectAttemptsRef.current = 0;
+        setConnectionState("connected");
       }
     );
+
+    socketRef.current = socket;
+  };
+
+  const uploadVideo = async () => {
+    if (!videoFile) {
+      setStatusMessage("Choose a video file first.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", videoFile);
+    setUploading(true);
+    setStatusMessage("");
+
+    try {
+      const { data } = await videoApi.upload(formData);
+      setSourceType("file");
+      setSourcePath(data.video_path || "");
+      setStatusMessage("Video uploaded. You can start live processing now.");
+      await startLocalPreview();
+    } catch (error) {
+      setStatusMessage(error?.response?.data?.detail || "Video upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const start = async () => {
+    if (sourceType === "file" && !sourcePath) {
+      setStatusMessage("Upload a video or enter a valid server file path.");
+      return;
+    }
+    await startLocalPreview();
+    manualStopRef.current = false;
+    clearReconnectTimer();
+    reconnectAttemptsRef.current = 0;
+    stopBrowserFrameStream();
+    if (socketRef.current) {
+      socketRef.current.close();
+    }
+
+    const wsSourceType = sourceType === "webcam" ? "browser_webcam" : sourceType;
+    const streamConfig = { source_type: wsSourceType, source_path: sourcePath || null };
+    activeStreamConfigRef.current = streamConfig;
+    connectSocket(streamConfig);
     if (sourceType === "webcam") {
       setStatusMessage("Processing started using browser webcam.");
-      socketRef.current = socket;
       startBrowserFrameStream();
       return;
     }
     setStatusMessage("Processing started.");
-    socketRef.current = socket;
   };
 
   const stop = () => {
+    manualStopRef.current = true;
+    clearReconnectTimer();
     stopBrowserFrameStream();
     if (socketRef.current?.readyState === WebSocket.OPEN && sourceType === "webcam") {
       socketRef.current.send(JSON.stringify({ type: "stop" }));
     }
     socketRef.current?.close();
     socketRef.current = null;
+    activeStreamConfigRef.current = null;
     stopLocalPreview();
     setLatestFaces([]);
     setCurrentFps(0);
     setProcessingMs(0);
+    setConnectionState("idle");
     lastRecognitionTsRef.current = 0;
     setStatusMessage("Processing stopped.");
   };
@@ -299,6 +363,7 @@ export default function LiveRecognitionPage() {
         <button onClick={stop} className="rounded bg-slate-700 text-white px-4 py-2">Stop</button>
       </div>
       {statusMessage ? <div className="card text-sm">{statusMessage}</div> : null}
+      <div className="card text-sm">Connection: {connectionState}</div>
 
       <div className="card">
         <h3 className="font-display text-lg mb-3">Live Preview</h3>

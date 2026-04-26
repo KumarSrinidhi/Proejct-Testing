@@ -1,9 +1,12 @@
-export function createRecognitionSocket(config, onMessage, onClose) {
+export function createRecognitionSocket(config, onMessage, onClose, onError, onOpen) {
   const wsBase = (import.meta.env.VITE_WS_URL || "ws://localhost:8000").replace(/\/$/, "");
   const ws = new WebSocket(`${wsBase}/ws/process`);
 
   ws.onopen = () => {
     ws.send(JSON.stringify(config));
+    if (onOpen) {
+      onOpen();
+    }
   };
 
   ws.onmessage = (event) => {
@@ -15,8 +18,16 @@ export function createRecognitionSocket(config, onMessage, onClose) {
     }
   };
 
-  ws.onclose = () => {
-    if (onClose) onClose();
+  ws.onerror = () => {
+    if (onError) {
+      onError();
+    }
+  };
+
+  ws.onclose = (event) => {
+    if (onClose) {
+      onClose(event);
+    }
   };
 
   return ws;
