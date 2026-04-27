@@ -85,6 +85,11 @@ export const attendanceApi = {
   exportCsv: (params = {}) => api.get("/api/attendance/export", { params, responseType: "blob" }),
 };
 
+export const attendanceExceptionApi = {
+  list: (params = {}) => api.get("/api/attendance-exceptions", { params }),
+  create: (payload) => api.post("/api/attendance-exceptions", payload),
+};
+
 export const userApi = {
   list: (params = {}) => api.get("/api/users", { params }),
   create: (payload) => api.post("/api/users", payload),

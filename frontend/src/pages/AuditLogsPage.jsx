@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { auditApi } from "../services/api";
 
+const ACTION_BADGE = {
+  create: "badge-emerald",
+  delete: "badge-rose",
+  update: "badge-amber",
+  login: "badge-cyan",
+  logout: "badge-violet",
+};
+
 export default function AuditLogsPage() {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -18,9 +26,7 @@ export default function AuditLogsPage() {
     setMessage("");
     try {
       const { data } = await auditApi.list({
-        page,
-        page_size: pageSize,
-        search,
+        page, page_size: pageSize, search,
         actor_username: actorUsername || undefined,
         action: action || undefined,
         entity_type: entityType || undefined,
@@ -37,9 +43,7 @@ export default function AuditLogsPage() {
     }
   };
 
-  useEffect(() => {
-    load();
-  }, [page, search, actorUsername, action, entityType]);
+  useEffect(() => { load(); }, [page, search, actorUsername, action, entityType]);
 
   const resetFilters = () => {
     setPage(1);
@@ -49,66 +53,131 @@ export default function AuditLogsPage() {
     setEntityType("");
   };
 
+  const getActionBadgeClass = (a) => {
+    const key = (a || "").toLowerCase();
+    for (const [prefix, cls] of Object.entries(ACTION_BADGE)) {
+      if (key.includes(prefix)) return cls;
+    }
+    return "badge-slate";
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="card space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-display text-xl">Audit Logs</h2>
-            <p className="text-sm text-slate-600">Recent mutable actions across the system.</p>
+    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      {/* Header */}
+      <div>
+        <h1 className="page-title">Audit Logs</h1>
+        <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+          Complete record of mutable actions across the system
+        </p>
+      </div>
+
+      {/* Filters */}
+      <div className="card">
+        <div className="section-title mb-3">Filters</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
+          <div style={{ position: "relative" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              style={{ position: "absolute", left: "0.625rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", pointerEvents: "none" }}>
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              className="input input-sm"
+              style={{ paddingLeft: "2rem" }}
+              placeholder="Search…"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            />
           </div>
-          <button type="button" className="rounded bg-slate-700 text-white px-3 py-2 text-sm" onClick={load} disabled={loading}>
-            Refresh
-          </button>
+          <input className="input input-sm" placeholder="Actor username" value={actorUsername} onChange={(e) => { setActorUsername(e.target.value); setPage(1); }} />
+          <input className="input input-sm" placeholder="Action" value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }} />
+          <input className="input input-sm" placeholder="Entity type" value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1); }} />
         </div>
-
-        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-2">
-          <input className="border rounded p-2 text-sm" placeholder="Search action, actor, entity" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
-          <input className="border rounded p-2 text-sm" placeholder="Actor username" value={actorUsername} onChange={(event) => { setActorUsername(event.target.value); setPage(1); }} />
-          <input className="border rounded p-2 text-sm" placeholder="Action" value={action} onChange={(event) => { setAction(event.target.value); setPage(1); }} />
-          <input className="border rounded p-2 text-sm" placeholder="Entity type" value={entityType} onChange={(event) => { setEntityType(event.target.value); setPage(1); }} />
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" className="rounded bg-ink text-white px-3 py-2 text-sm" onClick={load} disabled={loading}>Apply</button>
-          <button type="button" className="rounded bg-white border border-slate-200 px-3 py-2 text-sm" onClick={resetFilters} disabled={loading}>Reset</button>
+        <div style={{ display: "flex", gap: "0.625rem" }}>
+          <button type="button" className="btn btn-primary btn-sm" onClick={load} disabled={loading}>Apply</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={resetFilters} disabled={loading}>Reset</button>
         </div>
       </div>
 
-      {message ? <div className="card text-sm">{message}</div> : null}
+      {message && <div className="alert alert-danger animate-fade-in">{message}</div>}
 
-      <div className="card overflow-auto">
-        <div className="text-xs text-slate-600 mb-2">Showing {items.length} of {total}</div>
-        {loading ? <div className="text-sm mb-2">Loading audit logs...</div> : null}
-        {!loading && items.length === 0 ? <div className="text-sm mb-2">No audit logs found.</div> : null}
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left border-b">
-              <th className="p-2">Timestamp</th>
-              <th className="p-2">Actor</th>
-              <th className="p-2">Action</th>
-              <th className="p-2">Entity</th>
-              <th className="p-2">Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((row) => (
-              <tr key={row.id} className="border-b align-top">
-                <td className="p-2 whitespace-nowrap">{new Date(row.timestamp).toLocaleString()}</td>
-                <td className="p-2 whitespace-nowrap">{row.actor_username} ({row.actor_role})</td>
-                <td className="p-2 whitespace-nowrap">{row.action}</td>
-                <td className="p-2 whitespace-nowrap">{row.entity_type}{row.entity_id ? ` #${row.entity_id}` : ""}</td>
-                <td className="p-2 text-xs text-slate-700 break-all">{row.metadata_json}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Table */}
+      <div className="card">
+        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+          Showing <strong style={{ color: "var(--text-secondary)" }}>{items.length}</strong> of {total} records
+        </div>
 
-      <div className="card flex items-center justify-between text-sm">
-        <span>Page {page}</span>
-        <div className="flex gap-2">
-          <button type="button" className="rounded bg-slate-700 text-white px-3 py-2" onClick={() => setPage((prev) => Math.max(1, prev - 1))} disabled={page <= 1 || loading}>Previous</button>
-          <button type="button" className="rounded bg-slate-700 text-white px-3 py-2" onClick={() => setPage((prev) => prev + 1)} disabled={loading || items.length < pageSize || page * pageSize >= total}>Next</button>
+        {loading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {[...Array(6)].map((_, i) => <div key={i} className="skeleton" style={{ height: 44, borderRadius: 8 }} />)}
+          </div>
+        ) : items.length === 0 ? (
+          <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.875rem" }}>
+            No audit logs found
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Actor</th>
+                  <th>Action</th>
+                  <th>Entity</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((row) => (
+                  <tr key={row.id}>
+                    <td style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                      {new Date(row.timestamp).toLocaleString()}
+                    </td>
+                    <td>
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{row.actor_username}</div>
+                        <span className="badge badge-slate" style={{ fontSize: "0.6rem" }}>{row.actor_role}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`badge ${getActionBadgeClass(row.action)}`}>{row.action}</span>
+                    </td>
+                    <td>
+                      <span style={{ color: "var(--text-secondary)" }}>{row.entity_type}</span>
+                      {row.entity_id && (
+                        <span style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.75rem", color: "var(--text-muted)", marginLeft: "0.375rem" }}>
+                          #{row.entity_id}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ maxWidth: 260, overflow: "hidden" }}>
+                      {row.metadata_json && (
+                        <code style={{
+                          fontSize: "0.7rem",
+                          color: "var(--text-muted)",
+                          fontFamily: "var(--mono, monospace)",
+                          wordBreak: "break-all",
+                          display: "block",
+                          maxHeight: "3rem",
+                          overflow: "hidden",
+                        }}>
+                          {row.metadata_json}
+                        </code>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        <div className="pagination" style={{ marginTop: "1rem", justifyContent: "space-between" }}>
+          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Page {page}</span>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>← Prev</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage((p) => p + 1)} disabled={loading || items.length < pageSize || page * pageSize >= total}>Next →</button>
+          </div>
         </div>
       </div>
     </div>

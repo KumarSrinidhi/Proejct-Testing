@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { userApi } from "../services/api";
 
 const ROLE_OPTIONS = ["admin", "teacher", "student"];
+const ROLE_BADGE = {
+  admin: "badge-violet",
+  teacher: "badge-cyan",
+  student: "badge-emerald",
+};
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState([]);
@@ -11,17 +16,15 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const pageSize = 20;
   const [form, setForm] = useState({
-    username: "",
-    email: "",
-    password: "",
-    role: "student",
-    create_person_profile: true,
-    person_name: "",
-    person_department: "",
+    username: "", email: "", password: "", role: "student",
+    create_person_profile: true, person_name: "", person_department: "",
   });
   const [resetPasswordByUserId, setResetPasswordByUserId] = useState({});
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState({ text: "", type: "info" });
   const [busy, setBusy] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+
+  const setMsg = (text, type = "info") => setMessage({ text, type });
 
   const loadUsers = async () => {
     setLoading(true);
@@ -31,7 +34,7 @@ export default function AdminUsersPage() {
       setUsers(items);
       setTotalUsers(data?.total ?? items.length);
     } catch (error) {
-      setMessage(error?.response?.data?.detail || "Failed to load users.");
+      setMsg(error?.response?.data?.detail || "Failed to load users.", "danger");
       setUsers([]);
       setTotalUsers(0);
     } finally {
@@ -39,31 +42,20 @@ export default function AdminUsersPage() {
     }
   };
 
-  useEffect(() => {
-    loadUsers().catch((error) => {
-      setMessage(error?.response?.data?.detail || "Failed to load users.");
-    });
-  }, [page, search]);
+  useEffect(() => { loadUsers(); }, [page, search]);
 
   const createUser = async (event) => {
     event.preventDefault();
     setBusy(true);
-    setMessage("");
+    setMsg("");
     try {
       await userApi.create(form);
-      setForm({
-        username: "",
-        email: "",
-        password: "",
-        role: "student",
-        create_person_profile: true,
-        person_name: "",
-        person_department: "",
-      });
-      setMessage("User created.");
+      setForm({ username: "", email: "", password: "", role: "student", create_person_profile: true, person_name: "", person_department: "" });
+      setMsg("User created successfully.", "success");
+      setFormOpen(false);
       await loadUsers();
     } catch (error) {
-      setMessage(error?.response?.data?.detail || "Failed to create user.");
+      setMsg(error?.response?.data?.detail || "Failed to create user.", "danger");
     } finally {
       setBusy(false);
     }
@@ -71,13 +63,13 @@ export default function AdminUsersPage() {
 
   const updateRole = async (id, role) => {
     setBusy(true);
-    setMessage("");
+    setMsg("");
     try {
       await userApi.updateRole(id, role);
-      setMessage("Role updated.");
+      setMsg("Role updated.", "success");
       await loadUsers();
     } catch (error) {
-      setMessage(error?.response?.data?.detail || "Failed to update role.");
+      setMsg(error?.response?.data?.detail || "Failed to update role.", "danger");
     } finally {
       setBusy(false);
     }
@@ -85,218 +77,260 @@ export default function AdminUsersPage() {
 
   const resetPassword = async (id) => {
     const password = (resetPasswordByUserId[id] || "").trim();
-    if (!password) {
-      setMessage("Enter a password before reset.");
-      return;
-    }
-
+    if (!password) { setMsg("Enter a password before resetting.", "warning"); return; }
     setBusy(true);
-    setMessage("");
+    setMsg("");
     try {
       await userApi.updatePassword(id, password);
       setResetPasswordByUserId((prev) => ({ ...prev, [id]: "" }));
-      setMessage("Password updated.");
+      setMsg("Password updated.", "success");
     } catch (error) {
-      setMessage(error?.response?.data?.detail || "Failed to update password.");
+      setMsg(error?.response?.data?.detail || "Failed to update password.", "danger");
     } finally {
       setBusy(false);
     }
   };
 
   const removeUser = async (id) => {
-    const confirmed = window.confirm("Delete this user?");
-    if (!confirmed) return;
-
+    if (!window.confirm("Delete this user? This action cannot be undone.")) return;
     setBusy(true);
-    setMessage("");
+    setMsg("");
     try {
       await userApi.remove(id);
-      setMessage("User deleted.");
+      setMsg("User deleted.", "success");
       await loadUsers();
     } catch (error) {
-      setMessage(error?.response?.data?.detail || "Failed to delete user.");
+      setMsg(error?.response?.data?.detail || "Failed to delete user.", "danger");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="space-y-4">
-      <form onSubmit={createUser} className="card space-y-3">
-        <h3 className="font-display text-lg">Create User</h3>
-        <div className="grid md:grid-cols-2 gap-2">
-          <input
-            className="border rounded p-2"
-            placeholder="Username"
-            value={form.username}
-            onChange={(event) => setForm({ ...form, username: event.target.value })}
-            disabled={busy}
-          />
-          <input
-            className="border rounded p-2"
-            type="email"
-            placeholder="Email"
-            value={form.email}
-            onChange={(event) => setForm({ ...form, email: event.target.value })}
-            disabled={busy}
-          />
-          <input
-            className="border rounded p-2"
-            type="password"
-            placeholder="Password"
-            value={form.password}
-            onChange={(event) => setForm({ ...form, password: event.target.value })}
-            disabled={busy}
-          />
-          <select
-            className="border rounded p-2"
-            value={form.role}
-            onChange={(event) => setForm({ ...form, role: event.target.value })}
-            disabled={busy}
-          >
-            {ROLE_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
+    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+        <div>
+          <h1 className="page-title">User Management</h1>
+          <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+            Create and manage system users and their access roles
+          </p>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.create_person_profile}
-            onChange={(event) => setForm({ ...form, create_person_profile: event.target.checked })}
-            disabled={busy}
-          />
-          Create or update linked person profile
-        </label>
-        {form.create_person_profile ? (
-          <div className="grid md:grid-cols-2 gap-2">
-            <input
-              className="border rounded p-2"
-              placeholder="Person Name"
-              value={form.person_name}
-              onChange={(event) => setForm({ ...form, person_name: event.target.value })}
-              disabled={busy}
-            />
-            <input
-              className="border rounded p-2"
-              placeholder="Person Department"
-              value={form.person_department}
-              onChange={(event) => setForm({ ...form, person_department: event.target.value })}
-              disabled={busy}
-            />
-          </div>
-        ) : null}
-        <button className="rounded bg-accent text-white px-3 py-2 w-fit" disabled={busy}>
-          {busy ? "Working..." : "Create User"}
+        <button
+          id="open-create-user-form"
+          className="btn btn-primary"
+          onClick={() => setFormOpen((v) => !v)}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          {formOpen ? "Cancel" : "Create User"}
         </button>
-      </form>
+      </div>
 
-      {message ? <div className="card text-sm">{message}</div> : null}
+      {/* Create Form */}
+      {formOpen && (
+        <div className="card animate-fade-in">
+          <div className="section-title mb-4">Create New User</div>
+          <form onSubmit={createUser} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.3rem", fontWeight: 500 }}>Username *</label>
+                <input className="input" placeholder="username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} disabled={busy} required />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.3rem", fontWeight: 500 }}>Email</label>
+                <input className="input" type="email" placeholder="user@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={busy} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.3rem", fontWeight: 500 }}>Password *</label>
+                <input className="input" type="password" placeholder="••••••••" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} disabled={busy} required />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.3rem", fontWeight: 500 }}>Role</label>
+                <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} disabled={busy}>
+                  {ROLE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+            </div>
 
-      <div className="card overflow-auto">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <h3 className="font-display text-lg">Users</h3>
-          <div className="flex items-center gap-2">
-            <input
-              className="border rounded p-2 text-sm"
-              placeholder="Search username, email, or person"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPage(1);
-              }}
-            />
-            <button type="button" className="rounded bg-slate-700 text-white px-3 py-2 text-sm" onClick={loadUsers} disabled={loading}>
-              Refresh
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", color: "var(--text-secondary)", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={form.create_person_profile}
+                onChange={(e) => setForm({ ...form, create_person_profile: e.target.checked })}
+                disabled={busy}
+              />
+              Also create / update a linked person profile
+            </label>
+
+            {form.create_person_profile && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.3rem", fontWeight: 500 }}>Person Name</label>
+                  <input className="input" placeholder="Full name" value={form.person_name} onChange={(e) => setForm({ ...form, person_name: e.target.value })} disabled={busy} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.3rem", fontWeight: 500 }}>Department</label>
+                  <input className="input" placeholder="Department" value={form.person_department} onChange={(e) => setForm({ ...form, person_department: e.target.value })} disabled={busy} />
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <button type="submit" className="btn btn-primary" disabled={busy}>
+                {busy ? "Creating…" : "Create User"}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setFormOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Message */}
+      {message.text && (
+        <div className={`alert alert-${message.type} animate-fade-in`}>
+          {message.text}
+        </div>
+      )}
+
+      {/* Users Table */}
+      <div className="card">
+        <div className="section-header">
+          <div className="section-title">Users</div>
+          <div style={{ display: "flex", gap: "0.625rem", alignItems: "center" }}>
+            <div style={{ position: "relative" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                style={{ position: "absolute", left: "0.625rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", pointerEvents: "none" }}>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                id="user-search"
+                className="input input-sm"
+                style={{ paddingLeft: "2rem", width: 220 }}
+                placeholder="Search users…"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              />
+            </div>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={loadUsers} disabled={loading}>
+              {loading ? "Loading…" : "Refresh"}
             </button>
           </div>
         </div>
-        <div className="text-xs text-slate-600 mb-2">Showing {users.length} of {totalUsers}</div>
-        {loading ? <div className="text-sm mb-2">Loading users...</div> : null}
-        {!loading && users.length === 0 ? <div className="text-sm mb-2">No users found.</div> : null}
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left border-b">
-              <th className="p-2">Username</th>
-              <th className="p-2">Email</th>
-              <th className="p-2">Role</th>
-              <th className="p-2">Linked Person</th>
-              <th className="p-2">Created</th>
-              <th className="p-2">Reset Password</th>
-              <th className="p-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user) => (
-              <tr className="border-b" key={user.id}>
-                <td className="p-2">{user.username}</td>
-                <td className="p-2">{user.email || "-"}</td>
-                <td className="p-2">
-                  <select
-                    className="border rounded p-1"
-                    value={user.role}
-                    onChange={(event) => updateRole(user.id, event.target.value)}
-                    disabled={busy}
-                  >
-                    {ROLE_OPTIONS.map((option) => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
-                </td>
-                <td className="p-2">
-                  {user.person_name ? `${user.person_name} (${user.person_department || "N/A"})` : "Not linked"}
-                </td>
-                <td className="p-2">{new Date(user.created_at).toLocaleString()}</td>
-                <td className="p-2">
-                  <div className="flex gap-2">
-                    <input
-                      className="border rounded p-1"
-                      type="password"
-                      placeholder="New password"
-                      value={resetPasswordByUserId[user.id] || ""}
-                      onChange={(event) =>
-                        setResetPasswordByUserId((prev) => ({
-                          ...prev,
-                          [user.id]: event.target.value,
-                        }))
-                      }
-                      disabled={busy}
-                    />
-                    <button
-                      type="button"
-                      className="rounded bg-ink text-white px-2 py-1"
-                      onClick={() => resetPassword(user.id)}
-                      disabled={busy}
-                    >
-                      Save
-                    </button>
-                  </div>
-                </td>
-                <td className="p-2">
-                  <button
-                    type="button"
-                    className="rounded bg-red-600 text-white px-2 py-1"
-                    onClick={() => removeUser(user.id)}
-                    disabled={busy}
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
-      <div className="card flex items-center justify-between text-sm">
-        <span>Page {page}</span>
-        <div className="flex gap-2">
-          <button type="button" className="rounded bg-slate-700 text-white px-3 py-2" onClick={() => setPage((prev) => Math.max(1, prev - 1))} disabled={page <= 1 || loading}>
-            Previous
-          </button>
-          <button type="button" className="rounded bg-slate-700 text-white px-3 py-2" onClick={() => setPage((prev) => prev + 1)} disabled={loading || users.length < pageSize || page * pageSize >= totalUsers}>
-            Next
-          </button>
+        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+          Showing <strong style={{ color: "var(--text-secondary)" }}>{users.length}</strong> of {totalUsers} users
+        </div>
+
+        {loading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {[...Array(5)].map((_, i) => <div key={i} className="skeleton" style={{ height: 44, borderRadius: 8 }} />)}
+          </div>
+        ) : users.length === 0 ? (
+          <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.875rem" }}>No users found</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Linked Person</th>
+                  <th>Created</th>
+                  <th>Reset Password</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id}>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+                        <div style={{
+                          width: 28, height: 28, borderRadius: "50%",
+                          background: "var(--primary-bg)",
+                          border: "1px solid var(--border)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: "0.8rem", fontWeight: 700, color: "var(--primary)",
+                          flexShrink: 0,
+                        }}>
+                          {(user.username || "?")[0].toUpperCase()}
+                        </div>
+                        {user.username}
+                      </div>
+                    </td>
+                    <td style={{ color: "var(--text-muted)" }}>{user.email || "—"}</td>
+                    <td>
+                      <select
+                        className="input input-sm"
+                        style={{ width: "auto", minWidth: 100 }}
+                        value={user.role}
+                        onChange={(e) => updateRole(user.id, e.target.value)}
+                        disabled={busy}
+                      >
+                        {ROLE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      {user.person_name
+                        ? <span>{user.person_name} <span className="badge badge-slate" style={{ marginLeft: 4 }}>{user.person_department || "N/A"}</span></span>
+                        : <span style={{ color: "var(--text-muted)" }}>Not linked</span>
+                      }
+                    </td>
+                    <td style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                      {new Date(user.created_at).toLocaleDateString()}
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <input
+                          className="input input-sm"
+                          type="password"
+                          placeholder="New password"
+                          style={{ width: 140 }}
+                          value={resetPasswordByUserId[user.id] || ""}
+                          onChange={(e) => setResetPasswordByUserId((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                          disabled={busy}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => resetPassword(user.id)}
+                          disabled={busy}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={() => removeUser(user.id)}
+                        disabled={busy}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        <div className="pagination" style={{ marginTop: "1rem", justifyContent: "space-between" }}>
+          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Page {page}</span>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>← Prev</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage((p) => p + 1)} disabled={loading || users.length < pageSize || page * pageSize >= totalUsers}>Next →</button>
+          </div>
         </div>
       </div>
     </div>

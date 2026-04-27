@@ -9,48 +9,53 @@ export default function HeatmapPage() {
 
   useEffect(() => {
     let isMounted = true;
-
     const run = async () => {
       setLoading(true);
       setError("");
       try {
         const res = await attendanceApi.heatmap();
-        if (!isMounted) {
-          return;
-        }
+        if (!isMounted) return;
         const next = res?.data || {};
-        setData({
-          hourly: next.hourly || {},
-          daily: next.daily || {},
-        });
+        setData({ hourly: next.hourly || {}, daily: next.daily || {} });
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (!isMounted) return;
         setError(err?.response?.data?.detail || "Failed to load heatmap data.");
       } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       }
     };
-
     run();
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, []);
 
-  if (loading) {
-    return <div className="card text-sm">Loading heatmap...</div>;
-  }
-
   return (
-    <div className="space-y-4">
-      {error ? <div className="card text-sm">{error}</div> : null}
-      <AttendanceHeatmap title="Hourly Pattern" data={data.hourly} />
-      <AttendanceHeatmap title="Daily Pattern" data={data.daily} />
+    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      <div>
+        <h1 className="page-title">Attendance Heatmap</h1>
+        <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+          Hourly and daily attendance patterns visualized as heatmaps
+        </p>
+      </div>
+
+      {error && <div className="alert alert-danger">{error}</div>}
+
+      {loading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div className="skeleton" style={{ height: 200, borderRadius: 14 }} />
+          <div className="skeleton" style={{ height: 200, borderRadius: 14 }} />
+        </div>
+      ) : (
+        <>
+          <div className="card animate-fade-in">
+            <div className="section-title mb-3">Hourly Pattern</div>
+            <AttendanceHeatmap title="Hourly Pattern" data={data.hourly} />
+          </div>
+          <div className="card animate-fade-in" style={{ animationDelay: "0.1s" }}>
+            <div className="section-title mb-3">Daily Pattern</div>
+            <AttendanceHeatmap title="Daily Pattern" data={data.daily} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

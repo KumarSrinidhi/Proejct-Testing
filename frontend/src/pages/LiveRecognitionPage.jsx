@@ -3,6 +3,22 @@ import LiveFeed from "../components/LiveFeed";
 import { createRecognitionSocket } from "../services/websocket";
 import { videoApi } from "../services/api";
 
+const STATE_COLORS = {
+  connected: "#10b981",
+  connecting: "#f59e0b",
+  reconnecting: "#f59e0b",
+  error: "#f43f5e",
+  idle: "#64748b",
+};
+
+const STATE_LABELS = {
+  connected: "Connected",
+  connecting: "Connecting…",
+  reconnecting: "Reconnecting…",
+  error: "Error",
+  idle: "Idle",
+};
+
 export default function LiveRecognitionPage() {
   const [events, setEvents] = useState([]);
   const [sourceType, setSourceType] = useState("webcam");
@@ -30,24 +46,14 @@ export default function LiveRecognitionPage() {
   const activeStreamConfigRef = useRef(null);
   const sourceTypeRef = useRef(sourceType);
 
-  useEffect(() => {
-    sourceTypeRef.current = sourceType;
-  }, [sourceType]);
+  useEffect(() => { sourceTypeRef.current = sourceType; }, [sourceType]);
 
   const clearReconnectTimer = () => {
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
   };
-
   const stopBrowserFrameStream = () => {
-    if (frameIntervalRef.current) {
-      clearInterval(frameIntervalRef.current);
-      frameIntervalRef.current = null;
-    }
+    if (frameIntervalRef.current) { clearInterval(frameIntervalRef.current); frameIntervalRef.current = null; }
   };
-
   const startBrowserFrameStream = () => {
     stopBrowserFrameStream();
     frameIntervalRef.current = setInterval(() => {
@@ -56,7 +62,6 @@ export default function LiveRecognitionPage() {
       const canvas = captureCanvasRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN || !video || !canvas) return;
       if (video.videoWidth <= 0 || video.videoHeight <= 0) return;
-
       const targetWidth = 640;
       const ratio = video.videoHeight / video.videoWidth;
       const targetHeight = Math.max(1, Math.round(targetWidth * ratio));
@@ -69,40 +74,23 @@ export default function LiveRecognitionPage() {
       socket.send(JSON.stringify({ type: "frame", image }));
     }, 700);
   };
-
   const stopLocalPreview = () => {
-    if (webcamStreamRef.current) {
-      webcamStreamRef.current.getTracks().forEach((track) => track.stop());
-      webcamStreamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
+    if (webcamStreamRef.current) { webcamStreamRef.current.getTracks().forEach((t) => t.stop()); webcamStreamRef.current = null; }
+    if (videoRef.current) videoRef.current.srcObject = null;
     setPreviewMode("idle");
   };
-
   const startLocalPreview = async () => {
     stopLocalPreview();
     if (sourceType === "webcam") {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         webcamStreamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
+        if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
         setPreviewMode("webcam");
-      } catch {
-        setStatusMessage("Failed to open webcam preview.");
-      }
+      } catch { setStatusMessage("Failed to open webcam preview."); }
       return;
     }
-
-    if (sourceType === "file" && previewUrl) {
-      setPreviewMode("file");
-      return;
-    }
-
+    if (sourceType === "file" && previewUrl) { setPreviewMode("file"); return; }
     setPreviewMode("idle");
   };
 
@@ -112,28 +100,18 @@ export default function LiveRecognitionPage() {
       clearReconnectTimer();
       stopBrowserFrameStream();
       stopLocalPreview();
-      if (previewObjectUrlRef.current) {
-        URL.revokeObjectURL(previewObjectUrlRef.current);
-        previewObjectUrlRef.current = null;
-      }
+      if (previewObjectUrlRef.current) { URL.revokeObjectURL(previewObjectUrlRef.current); previewObjectUrlRef.current = null; }
     };
   }, []);
 
   useEffect(() => {
     if (!videoRef.current) return;
-
     if (previewMode === "webcam" && webcamStreamRef.current) {
       videoRef.current.srcObject = webcamStreamRef.current;
       videoRef.current.play().catch(() => {});
       return;
     }
-
-    if (previewMode === "file") {
-      videoRef.current.srcObject = null;
-      videoRef.current.play().catch(() => {});
-      return;
-    }
-
+    if (previewMode === "file") { videoRef.current.srcObject = null; videoRef.current.play().catch(() => {}); return; }
     videoRef.current.srcObject = null;
   }, [previewMode, previewUrl]);
 
@@ -146,95 +124,54 @@ export default function LiveRecognitionPage() {
           const now = performance.now();
           if (lastRecognitionTsRef.current > 0) {
             const delta = now - lastRecognitionTsRef.current;
-            if (delta > 0) {
-              setCurrentFps(Number((1000 / delta).toFixed(2)));
-            }
+            if (delta > 0) setCurrentFps(Number((1000 / delta).toFixed(2)));
           }
           lastRecognitionTsRef.current = now;
-
           const faces = Array.isArray(payload.faces) ? payload.faces : [];
           if (faces.length > 0) {
-            const faceEvents = faces.map((face) => ({
-              ...payload,
-              person_id: face.person_id,
-              name: face.name,
-              confidence: face.confidence,
-              attendance_marked: face.attendance_marked,
-              message: face.message,
-              bbox: face.bbox,
-            }));
+            const faceEvents = faces.map((face) => ({ ...payload, person_id: face.person_id, name: face.name, confidence: face.confidence, attendance_marked: face.attendance_marked, message: face.message, bbox: face.bbox }));
             setEvents((prev) => [...faceEvents, ...prev].slice(0, 200));
           } else {
             setEvents((prev) => [payload, ...prev].slice(0, 200));
           }
           setLatestFaces(faces);
           setProcessingMs(Number(payload.processing_ms || 0));
-          if (payload.frame_width && payload.frame_height) {
-            setFrameSize({ width: payload.frame_width, height: payload.frame_height });
-          }
+          if (payload.frame_width && payload.frame_height) setFrameSize({ width: payload.frame_width, height: payload.frame_height });
           return;
         }
-
-        if (payload.type === "error") {
-          setStatusMessage(payload.message || "Stream processing failed.");
-          return;
-        }
-
-        if (payload.type === "done") {
-          setStatusMessage("Stream completed.");
-        }
+        if (payload.type === "error") { setStatusMessage(payload.message || "Stream processing failed."); return; }
+        if (payload.type === "done") setStatusMessage("Stream completed.");
       },
       () => {
         stopBrowserFrameStream();
         socketRef.current = null;
-        if (manualStopRef.current) {
-          setConnectionState("idle");
-          return;
-        }
+        if (manualStopRef.current) { setConnectionState("idle"); return; }
         const nextAttempt = reconnectAttemptsRef.current + 1;
         reconnectAttemptsRef.current = nextAttempt;
-        if (nextAttempt > 5) {
-          setConnectionState("error");
-          setStatusMessage("Connection lost. Retry limit reached.");
-          return;
-        }
+        if (nextAttempt > 5) { setConnectionState("error"); setStatusMessage("Connection lost. Retry limit reached."); return; }
         const delayMs = Math.min(1000 * 2 ** (nextAttempt - 1), 10000);
         setConnectionState("reconnecting");
-        setStatusMessage(`Connection lost. Reconnecting in ${Math.round(delayMs / 1000)}s...`);
+        setStatusMessage(`Connection lost. Reconnecting in ${Math.round(delayMs / 1000)}s…`);
         clearReconnectTimer();
         reconnectTimerRef.current = setTimeout(() => {
           if (!manualStopRef.current && activeStreamConfigRef.current) {
             connectSocket(activeStreamConfigRef.current);
-            if (sourceTypeRef.current === "webcam") {
-              startBrowserFrameStream();
-            }
+            if (sourceTypeRef.current === "webcam") startBrowserFrameStream();
           }
         }, delayMs);
       },
-      () => {
-        setConnectionState("error");
-        setStatusMessage("WebSocket connection error.");
-      },
-      () => {
-        reconnectAttemptsRef.current = 0;
-        setConnectionState("connected");
-      }
+      () => { setConnectionState("error"); setStatusMessage("WebSocket connection error."); },
+      () => { reconnectAttemptsRef.current = 0; setConnectionState("connected"); }
     );
-
     socketRef.current = socket;
   };
 
   const uploadVideo = async () => {
-    if (!videoFile) {
-      setStatusMessage("Choose a video file first.");
-      return;
-    }
-
+    if (!videoFile) { setStatusMessage("Choose a video file first."); return; }
     const formData = new FormData();
     formData.append("file", videoFile);
     setUploading(true);
     setStatusMessage("");
-
     try {
       const { data } = await videoApi.upload(formData);
       setSourceType("file");
@@ -249,28 +186,18 @@ export default function LiveRecognitionPage() {
   };
 
   const start = async () => {
-    if (sourceType === "file" && !sourcePath) {
-      setStatusMessage("Upload a video or enter a valid server file path.");
-      return;
-    }
+    if (sourceType === "file" && !sourcePath) { setStatusMessage("Upload a video or enter a valid server file path."); return; }
     await startLocalPreview();
     manualStopRef.current = false;
     clearReconnectTimer();
     reconnectAttemptsRef.current = 0;
     stopBrowserFrameStream();
-    if (socketRef.current) {
-      socketRef.current.close();
-    }
-
+    if (socketRef.current) socketRef.current.close();
     const wsSourceType = sourceType === "webcam" ? "browser_webcam" : sourceType;
     const streamConfig = { source_type: wsSourceType, source_path: sourcePath || null };
     activeStreamConfigRef.current = streamConfig;
     connectSocket(streamConfig);
-    if (sourceType === "webcam") {
-      setStatusMessage("Processing started using browser webcam.");
-      startBrowserFrameStream();
-      return;
-    }
+    if (sourceType === "webcam") { setStatusMessage("Processing started using browser webcam."); startBrowserFrameStream(); return; }
     setStatusMessage("Processing started.");
   };
 
@@ -305,10 +232,7 @@ export default function LiveRecognitionPage() {
   const handleVideoFileChange = (event) => {
     const file = event.target.files?.[0] || null;
     setVideoFile(file);
-    if (previewObjectUrlRef.current) {
-      URL.revokeObjectURL(previewObjectUrlRef.current);
-      previewObjectUrlRef.current = null;
-    }
+    if (previewObjectUrlRef.current) { URL.revokeObjectURL(previewObjectUrlRef.current); previewObjectUrlRef.current = null; }
     if (file) {
       const objectUrl = URL.createObjectURL(file);
       previewObjectUrlRef.current = objectUrl;
@@ -327,51 +251,148 @@ export default function LiveRecognitionPage() {
   });
 
   return (
-    <div className="space-y-4">
-      <div className="card flex flex-wrap gap-2 items-end">
-        <label className="flex flex-col text-sm">
-          Source Type
-          <select className="border rounded p-2" value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
-            <option value="webcam">Webcam</option>
-            <option value="file">Video File</option>
-            <option value="rtsp">RTSP</option>
-          </select>
-        </label>
-        {sourceType === "rtsp" ? (
-          <label className="flex flex-col text-sm grow">
-            Source Path
-            <input className="border rounded p-2" value={sourcePath} onChange={(e) => setSourcePath(e.target.value)} />
-          </label>
-        ) : null}
-        {sourceType === "file" ? (
-          <>
-            <label className="flex flex-col text-sm grow">
-              Add Video
-              <input
-                type="file"
-                accept="video/mp4,video/avi,video/quicktime,video/x-matroska,video/webm"
-                className="border rounded p-2"
-                onChange={handleVideoFileChange}
-              />
-            </label>
-            <button onClick={uploadVideo} className="rounded bg-accent text-white px-4 py-2" disabled={uploading}>
-              {uploading ? "Uploading..." : "Upload Video"}
-            </button>
-          </>
-        ) : null}
-        <button onClick={start} className="rounded bg-mint text-white px-4 py-2">Start</button>
-        <button onClick={stop} className="rounded bg-slate-700 text-white px-4 py-2">Stop</button>
+    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      {/* Header */}
+      <div>
+        <h1 className="page-title">Live Recognition</h1>
+        <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+          Real-time face detection and attendance marking via webcam, video file, or RTSP stream
+        </p>
       </div>
-      {statusMessage ? <div className="card text-sm">{statusMessage}</div> : null}
-      <div className="card text-sm">Connection: {connectionState}</div>
 
+      {/* Controls */}
       <div className="card">
-        <h3 className="font-display text-lg mb-3">Live Preview</h3>
-        <canvas ref={captureCanvasRef} className="hidden" />
-        <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black">
+        <div className="section-title mb-4">Stream Configuration</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "flex-end" }}>
+          {/* Source type */}
+          <div>
+            <label style={{ display: "block", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.375rem", fontWeight: 500 }}>
+              Source Type
+            </label>
+            <select
+              id="live-source-type"
+              className="input"
+              style={{ width: 160 }}
+              value={sourceType}
+              onChange={(e) => setSourceType(e.target.value)}
+            >
+              <option value="webcam">Webcam</option>
+              <option value="file">Video File</option>
+              <option value="rtsp">RTSP Stream</option>
+            </select>
+          </div>
+
+          {/* RTSP path */}
+          {sourceType === "rtsp" && (
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <label style={{ display: "block", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.375rem", fontWeight: 500 }}>
+                RTSP URL
+              </label>
+              <input
+                className="input"
+                placeholder="rtsp://…"
+                value={sourcePath}
+                onChange={(e) => setSourcePath(e.target.value)}
+              />
+            </div>
+          )}
+
+          {/* File upload */}
+          {sourceType === "file" && (
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "0.75rem", flex: 1, minWidth: 200 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: "block", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.375rem", fontWeight: 500 }}>
+                  Video File
+                </label>
+                <input
+                  type="file"
+                  accept="video/mp4,video/avi,video/quicktime,video/x-matroska,video/webm"
+                  className="input"
+                  onChange={handleVideoFileChange}
+                />
+              </div>
+              <button onClick={uploadVideo} className="btn btn-secondary" disabled={uploading} style={{ flexShrink: 0 }}>
+                {uploading ? (
+                  <>
+                    <div style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "var(--text-primary)", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                    Uploading…
+                  </>
+                ) : "Upload"}
+              </button>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div style={{ display: "flex", gap: "0.625rem" }}>
+            <button
+              id="live-start-btn"
+              onClick={start}
+              className="btn btn-primary"
+              disabled={connectionState === "connected" || connectionState === "connecting"}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              Start
+            </button>
+            <button
+              id="live-stop-btn"
+              onClick={stop}
+              className="btn btn-danger"
+              disabled={connectionState === "idle"}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+              </svg>
+              Stop
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Status bar */}
+      <div className="card" style={{ padding: "0.75rem 1.25rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <div className={`status-dot ${connectionState}`} />
+            <span style={{ fontSize: "0.875rem", fontWeight: 500, color: "var(--text-primary)" }}>
+              {STATE_LABELS[connectionState] || connectionState}
+            </span>
+          </div>
+          {statusMessage && (
+            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>— {statusMessage}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Video Preview + Stats */}
+      <div className="card">
+        <div className="section-header">
+          <div className="section-title">Live Preview</div>
+          {previewMode !== "idle" && (
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <span className="badge badge-cyan">
+                {currentFps.toFixed(1)} FPS
+              </span>
+              <span className="badge badge-violet">
+                {processingMs.toFixed(0)} ms
+              </span>
+              <span className="badge badge-emerald">
+                {latestFaces.length} faces
+              </span>
+            </div>
+          )}
+        </div>
+
+        <canvas ref={captureCanvasRef} style={{ display: "none" }} />
+
+        <div className="video-container" style={{ position: "relative", width: "100%", aspectRatio: "16/9", background: "#000", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
           <video
             ref={videoRef}
-            className={`w-full h-full object-fill ${previewMode === "idle" ? "hidden" : "block"}`}
+            style={{
+              width: "100%", height: "100%", objectFit: "fill",
+              display: previewMode === "idle" ? "none" : "block",
+            }}
             autoPlay
             muted
             playsInline
@@ -379,34 +400,64 @@ export default function LiveRecognitionPage() {
             loop={previewMode === "file"}
             src={previewMode === "file" ? previewUrl : undefined}
           />
-          {previewMode === "idle" ? (
-            <div className="absolute inset-0 flex items-center justify-center text-slate-200 text-sm">
-              Start processing to show preview
-            </div>
-          ) : null}
 
-          {previewMode !== "idle" ? (
-            <div className="absolute top-2 left-2 bg-black/70 text-white text-xs rounded px-2 py-1 space-y-0.5">
-              <div>FPS: {currentFps.toFixed(2)}</div>
-              <div>Processing: {processingMs.toFixed(2)} ms</div>
-              <div>Faces: {latestFaces.length}</div>
+          {previewMode === "idle" && (
+            <div style={{
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: "0.75rem",
+            }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "rgba(255,255,255,0.2)" }}>
+                <polygon points="23 7 16 12 23 17 23 7"/>
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+              </svg>
+              <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.875rem" }}>
+                Start processing to show preview
+              </p>
             </div>
-          ) : null}
+          )}
 
+          {/* Face overlays */}
           {latestFaces.map((face, idx) => {
-            if (!Array.isArray(face.bbox) || face.bbox.length < 4) {
-              return null;
-            }
+            if (!Array.isArray(face.bbox) || face.bbox.length < 4) return null;
             const boxStyle = getBoxStyle(face.bbox);
+            const isKnown = face.person_id && face.name !== "Unknown";
+            const color = isKnown ? "var(--success)" : "var(--warning)";
+            const bgMap = isKnown ? "var(--success-bg)" : "var(--warning-bg)";
             const label = `${face.name || "Unknown"} (${Number(face.confidence || 0).toFixed(2)})`;
             return (
               <div key={`face-${idx}`}>
-                <div className="absolute border-2 border-lime-400" style={boxStyle} />
+                <div 
+                  className="face-box" 
+                  style={{ 
+                    ...boxStyle, 
+                    position: "absolute",
+                    border: `2px solid ${color}`,
+                    borderRadius: "4px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.15), inset 0 0 0 1px rgba(255,255,255,0.2)",
+                    pointerEvents: "none"
+                  }} 
+                />
                 <div
-                  className="absolute bg-lime-500/90 text-black text-xs font-semibold px-2 py-1 rounded"
-                  style={{
-                    left: boxStyle.left,
-                    top: `calc(${boxStyle.top} - 28px)`,
+                  className="face-label"
+                  style={{ 
+                    ...boxStyle, 
+                    position: "absolute", 
+                    top: `calc(${boxStyle.top} - 28px)`, 
+                    width: "auto", 
+                    height: "auto",
+                    background: bgMap,
+                    color: color,
+                    border: `1px solid ${color}`,
+                    padding: "2px 8px",
+                    borderRadius: "6px",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                    pointerEvents: "none",
+                    zIndex: 10
                   }}
                 >
                   {label}
@@ -417,7 +468,10 @@ export default function LiveRecognitionPage() {
         </div>
       </div>
 
+      {/* Event Feed */}
       <LiveFeed events={events} onClear={clearEvents} />
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

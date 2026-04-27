@@ -1,0 +1,49 @@
+{
+  "name": "projects/4687317957046577959",
+  "projectId": "4687317957046577959",
+  "title": "VisionAttend — Face Recognition Attendance",
+  "visibility": "PRIVATE",
+  "createTime": "2026-04-27T06:11:59Z",
+  "projectType": "PROJECT_DESIGN",
+  "origin": "STITCH",
+  "deviceType": "DESKTOP",
+  "designSystem": {
+    "assetId": "37cb784921514312828a6ea19edf52e5",
+    "name": "assets/37cb784921514312828a6ea19edf52e5",
+    "displayName": "Cyber Void — Ethereal Sentinel",
+    "colorMode": "DARK",
+    "font": "INTER",
+    "roundness": "ROUND_EIGHT",
+    "customColor": "#00d4ff",
+    "saturation": 3
+  },
+  "screens": {
+    "login": {
+      "id": "c5007727e78c40268f6292c3974bc65c",
+      "sourceScreen": "projects/4687317957046577959/screens/c5007727e78c40268f6292c3974bc65c",
+      "title": "VisionAttend Login",
+      "width": 2560,
+      "height": 2048,
+      "screenshotUrl": "https://lh3.googleusercontent.com/aida/ADBb0ujgIvGgApny8LdrCspDTCM-SW6BGqPc5fEUkE88rZFNQXzNv7hdippqDbiGO66_H0B7PDXlgvv_EtgF5z-caLMBVR6ALEzLnuYdYeVkw7E6FUc_Sd-PKfQXofL3qcI1dwLZWDrjmM9UH8AdtJ9W6oqZyyP2GMhdzMqlNMMY2mN3CnYe2jgoGV5EeMsOvmKPVbw6yLc8LSFCpMh-vxxAEj6pnvDW_w5Q_GNY_m5957HsOLsC2aUC2zPWsdI"
+    },
+    "dashboard": {
+      "id": "32bacc69465a43d3a4569bb63f9f44ed",
+      "sourceScreen": "projects/4687317957046577959/screens/32bacc69465a43d3a4569bb63f9f44ed",
+      "title": "VisionAttend Admin Dashboard",
+      "width": 3072,
+      "height": 2214,
+      "screenshotUrl": "https://lh3.googleusercontent.com/aida/ADBb0ugiFyEiNVrFJ-fj_h6vNNBaO_nZxHtnaWhdFrlCXJQK-XHqNv1RvPKuYj-JkuDbdbICueIhE7ZcrhsovqQ3ydPxY8jp7EbjCf73tTmLj6W6OmIPTokFofW5JeltP3I0IVSbWPDxCfu6otui_ib8OD2EHbx5DrNp1AxfmNSy_Vx6yMGPIa_lxx4kYAqcYmS_i07QT5_14R0cOwnsqSdTztQJy7iWfBsgIobZCEToE8_Tw7pMd5RTm0vzAAY"
+    },
+    "live-recognition": {
+      "id": "fa101cdb43ac471a8ad94373f5bf75f7",
+      "sourceScreen": "projects/4687317957046577959/screens/fa101cdb43ac471a8ad94373f5bf75f7",
+      "title": "Live Recognition - VisionAttend",
+      "width": 2816,
+      "height": 2252,
+      "screenshotUrl": "https://lh3.googleusercontent.com/aida/ADBb0uhNNvBCNhc4xvf11Qh3NDjvWYNvigK9CxBFeEivoQi5u7NBo_yc6LV_gMVlfugX46PrKOjslay_uUCANa3tJfiX--oLOSHqzAgy76kG5GPj5Nq_EzkmkFdIMLVwCm4-NNWDwTKUqS6pPcEtgmBHMmz3_tUTvPsFC4gSRMR5lu6GmCCu1wtpK2D0wp6oB8BU8k1sgLGDZvHEGBoDirJf5vhhCGNR46ox6g1JLm35NYxSmRygTrCaYPsEXM8"
+    }
+  },
+  "metadata": {
+    "userRole": "OWNER"
+  }
+}
