@@ -13,7 +13,14 @@ from app.database import get_db
 from app.models.attendance import Attendance
 from app.models.person import Person, PersonImage
 from app.models.user import ROLE_ADMIN, User
-from app.schemas.person import PersonCreate, PersonDetail, PersonImageRead, PersonListResponse, PersonRead, PersonUpdate
+from app.schemas.person import (
+    PersonCreate,
+    PersonDetail,
+    PersonImageRead,
+    PersonListResponse,
+    PersonRead,
+    PersonUpdate,
+)
 from app.utils.audit import log_audit_event
 from app.utils.file_storage import PERSON_IMAGES_ROOT, save_person_image
 from app.utils.image_quality import validate_training_image
@@ -44,15 +51,27 @@ async def create_person(
     db: AsyncSession = Depends(get_db),
     current_admin: User = Depends(require_admin),
 ) -> PersonRead:
-    existing_person_result = await db.execute(select(Person).where(Person.email == payload.email))
+    existing_person_result = await db.execute(
+        select(Person).where(Person.email == payload.email)
+    )
     if existing_person_result.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Person with this email already exists")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Person with this email already exists",
+        )
 
-    existing_user_email_result = await db.execute(select(User).where(User.email == payload.email))
+    existing_user_email_result = await db.execute(
+        select(User).where(User.email == payload.email)
+    )
     if existing_user_email_result.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email already exists")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User with this email already exists",
+        )
 
-    person = Person(name=payload.name, email=payload.email, department=payload.department)
+    person = Person(
+        name=payload.name, email=payload.email, department=payload.department
+    )
     db.add(person)
 
     if payload.create_user_account:
@@ -62,9 +81,13 @@ async def create_person(
                 detail="Username and password are required when creating a linked user",
             )
 
-        existing_user_result = await db.execute(select(User).where(User.username == payload.username))
+        existing_user_result = await db.execute(
+            select(User).where(User.username == payload.username)
+        )
         if existing_user_result.scalar_one_or_none() is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Username already exists"
+            )
 
         normalized_role = payload.role.strip().lower()
         user = User(
@@ -84,7 +107,11 @@ async def create_person(
         action="create_person",
         entity_type="person",
         entity_id=person.id,
-        metadata={"email": person.email, "department": person.department, "linked_user": bool(payload.create_user_account)},
+        metadata={
+            "email": person.email,
+            "department": person.department,
+            "linked_user": bool(payload.create_user_account),
+        },
     )
     return PersonRead.model_validate(person)
 
@@ -106,7 +133,11 @@ async def list_persons(
         count_query = count_query.where(Person.is_active.is_(True))
     if search:
         like = f"%{search}%"
-        search_filter = (Person.name.ilike(like)) | (Person.email.ilike(like)) | (Person.department.ilike(like))
+        search_filter = (
+            (Person.name.ilike(like))
+            | (Person.email.ilike(like))
+            | (Person.department.ilike(like))
+        )
         query = query.where(search_filter)
         count_query = count_query.where(search_filter)
 
@@ -134,10 +165,20 @@ async def get_person(
     result = await db.execute(select(Person).where(Person.id == person_id))
     person = result.scalar_one_or_none()
     if person is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Person not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Person not found"
+        )
 
-    image_count_result = await db.execute(select(func.count(PersonImage.id)).where(PersonImage.person_id == person_id, PersonImage.is_active.is_(True)))
-    attendance_count_result = await db.execute(select(func.count(Attendance.id)).where(Attendance.person_id == person_id, Attendance.is_active.is_(True)))
+    image_count_result = await db.execute(
+        select(func.count(PersonImage.id)).where(
+            PersonImage.person_id == person_id, PersonImage.is_active.is_(True)
+        )
+    )
+    attendance_count_result = await db.execute(
+        select(func.count(Attendance.id)).where(
+            Attendance.person_id == person_id, Attendance.is_active.is_(True)
+        )
+    )
 
     return PersonDetail(
         id=person.id,
@@ -161,7 +202,9 @@ async def update_person(
     result = await db.execute(select(Person).where(Person.id == person_id))
     person = result.scalar_one_or_none()
     if person is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Person not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Person not found"
+        )
 
     for key, value in payload.model_dump(exclude_none=True).items():
         setattr(person, key, value)
@@ -188,12 +231,22 @@ async def delete_person(
     result = await db.execute(select(Person).where(Person.id == person_id))
     person = result.scalar_one_or_none()
     if person is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Person not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Person not found"
+        )
 
     person.is_active = False
     # Cascade soft-delete for related images and attendance
-    await db.execute(update(PersonImage).where(PersonImage.person_id == person_id).values(is_active=False))
-    await db.execute(update(Attendance).where(Attendance.person_id == person_id).values(is_active=False))
+    await db.execute(
+        update(PersonImage)
+        .where(PersonImage.person_id == person_id)
+        .values(is_active=False)
+    )
+    await db.execute(
+        update(Attendance)
+        .where(Attendance.person_id == person_id)
+        .values(is_active=False)
+    )
     await db.commit()
     await log_audit_event(
         db,
@@ -214,10 +267,14 @@ async def upload_person_images(
     db: AsyncSession = Depends(get_db),
     current_admin: User = Depends(require_admin),
 ) -> dict[str, object]:
-    person_result = await db.execute(select(Person).where(Person.id == person_id, Person.is_active.is_(True)))
+    person_result = await db.execute(
+        select(Person).where(Person.id == person_id, Person.is_active.is_(True))
+    )
     person = person_result.scalar_one_or_none()
     if person is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Person not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Person not found"
+        )
 
     face_service = request.app.state.face_service
 
@@ -228,25 +285,55 @@ async def upload_person_images(
     for upload in files:
         try:
             if upload.content_type not in {"image/jpeg", "image/png"}:
-                results.append({"filename": upload.filename, "status": "failed", "reason": "Invalid file type"})
+                results.append(
+                    {
+                        "filename": upload.filename,
+                        "status": "failed",
+                        "reason": "Invalid file type",
+                    }
+                )
                 continue
 
             payload = await upload.read(settings.max_image_upload_bytes + 1)
             if len(payload) > settings.max_image_upload_bytes:
-                results.append({"filename": upload.filename, "status": "failed", "reason": "Image too large"})
+                results.append(
+                    {
+                        "filename": upload.filename,
+                        "status": "failed",
+                        "reason": "Image too large",
+                    }
+                )
                 continue
             if not _is_supported_image_bytes(payload):
-                results.append({"filename": upload.filename, "status": "failed", "reason": "Invalid image content"})
+                results.append(
+                    {
+                        "filename": upload.filename,
+                        "status": "failed",
+                        "reason": "Invalid image content",
+                    }
+                )
                 continue
 
             image = bytes_to_cv2_image(payload)
             if image is None:
-                results.append({"filename": upload.filename, "status": "failed", "reason": "Unreadable image"})
+                results.append(
+                    {
+                        "filename": upload.filename,
+                        "status": "failed",
+                        "reason": "Unreadable image",
+                    }
+                )
                 continue
 
             quality_issue = validate_training_image(image)
             if quality_issue is not None:
-                results.append({"filename": upload.filename, "status": "failed", "reason": quality_issue})
+                results.append(
+                    {
+                        "filename": upload.filename,
+                        "status": "failed",
+                        "reason": quality_issue,
+                    }
+                )
                 continue
 
             path = save_person_image(person_id, upload.filename or "image.jpg", payload)
@@ -259,10 +346,17 @@ async def upload_person_images(
                 if embedding is not None:
                     db_image.encoding_blob = json.dumps(embedding.tolist())
 
-            results.append({"filename": upload.filename, "status": "ok", "image_id": db_image.id})
+            results.append(
+                {"filename": upload.filename, "status": "ok", "image_id": db_image.id}
+            )
         except Exception as exc:
-            logger.warning("Image upload failed", extra={"file": upload.filename, "error": str(exc)})
-            results.append({"filename": upload.filename, "status": "failed", "reason": str(exc)})
+            logger.warning(
+                "Image upload failed",
+                extra={"file": upload.filename, "error": str(exc)},
+            )
+            results.append(
+                {"filename": upload.filename, "status": "failed", "reason": str(exc)}
+            )
 
     await db.commit()
     await log_audit_event(
@@ -292,7 +386,11 @@ async def list_person_images(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> list[PersonImageRead]:
-    result = await db.execute(select(PersonImage).where(PersonImage.person_id == person_id, PersonImage.is_active.is_(True)).order_by(PersonImage.id.desc()))
+    result = await db.execute(
+        select(PersonImage)
+        .where(PersonImage.person_id == person_id, PersonImage.is_active.is_(True))
+        .order_by(PersonImage.id.desc())
+    )
     images = result.scalars().all()
     return [PersonImageRead.model_validate(image) for image in images]
 
@@ -306,20 +404,29 @@ async def preview_image(
     result = await db.execute(select(PersonImage).where(PersonImage.id == image_id))
     image = result.scalar_one_or_none()
     if image is None or not image.is_active:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Image not found"
+        )
 
     path = Path(image.image_path)
     allowed_root = PERSON_IMAGES_ROOT.resolve()
     try:
         resolved_path = path.resolve()
     except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image path")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image path"
+        )
 
     if not resolved_path.is_relative_to(allowed_root):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Image path outside allowed directory")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Image path outside allowed directory",
+        )
 
     if not resolved_path.exists() or not resolved_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found on disk")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found on disk"
+        )
 
     suffix = resolved_path.suffix.lower()
     media_type = "image/jpeg"
@@ -341,7 +448,9 @@ async def delete_image(
     result = await db.execute(select(PersonImage).where(PersonImage.id == image_id))
     image = result.scalar_one_or_none()
     if image is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Image not found"
+        )
 
     await db.delete(image)
     await db.commit()

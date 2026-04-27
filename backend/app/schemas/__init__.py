@@ -1,7 +1,17 @@
 from app.schemas.audit_log import AuditLogListResponse, AuditLogRead
-from app.schemas.attendance import AttendanceRead, AttendanceTodaySummary, AttendanceUpdate
+from app.schemas.attendance import (
+    AttendanceRead,
+    AttendanceTodaySummary,
+    AttendanceUpdate,
+)
 from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse
-from app.schemas.person import PersonCreate, PersonDetail, PersonImageRead, PersonRead, PersonUpdate
+from app.schemas.person import (
+    PersonCreate,
+    PersonDetail,
+    PersonImageRead,
+    PersonRead,
+    PersonUpdate,
+)
 from app.schemas.training import TrainingLogRead, TrainingLogUpdate, TrainingSummary
 
 __all__ = [

@@ -35,7 +35,11 @@ async def list_audit_logs(
         filters.append(AuditLog.entity_type == entity_type)
     if search:
         like = f"%{search}%"
-        filters.append((AuditLog.actor_username.ilike(like)) | (AuditLog.action.ilike(like)) | (AuditLog.entity_type.ilike(like)))
+        filters.append(
+            (AuditLog.actor_username.ilike(like))
+            | (AuditLog.action.ilike(like))
+            | (AuditLog.entity_type.ilike(like))
+        )
 
     if filters:
         query = query.where(*filters)

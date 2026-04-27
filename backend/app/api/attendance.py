@@ -1,6 +1,6 @@
 import csv
 import io
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -12,7 +12,12 @@ from app.database import get_db
 from app.models.attendance import Attendance
 from app.models.person import Person
 from app.models.user import User
-from app.schemas.attendance import AttendanceListResponse, AttendanceRead, AttendanceTodaySummary, AttendanceUpdate
+from app.schemas.attendance import (
+    AttendanceListResponse,
+    AttendanceRead,
+    AttendanceTodaySummary,
+    AttendanceUpdate,
+)
 from app.services.analytics_service import AnalyticsService
 from app.utils.audit import log_audit_event
 from app.utils.pagination import paginate_select
@@ -56,7 +61,9 @@ async def list_attendance(
     if filters:
         query = query.where(and_(*filters))
 
-    count_query = select(func.count(Attendance.id)).join(Person, Person.id == Attendance.person_id)
+    count_query = select(func.count(Attendance.id)).join(
+        Person, Person.id == Attendance.person_id
+    )
     if filters:
         count_query = count_query.where(and_(*filters))
     total, rows = await paginate_select(
@@ -94,11 +101,19 @@ async def get_today_summary(
     now = datetime.now(timezone.utc)
     day_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
 
-    total_result = await db.execute(select(func.count(Attendance.id)).where(Attendance.timestamp >= day_start))
-    unique_result = await db.execute(
-        select(func.count(func.distinct(Attendance.person_id))).where(Attendance.timestamp >= day_start)
+    total_result = await db.execute(
+        select(func.count(Attendance.id)).where(Attendance.timestamp >= day_start)
     )
-    avg_result = await db.execute(select(func.avg(Attendance.confidence_score)).where(Attendance.timestamp >= day_start))
+    unique_result = await db.execute(
+        select(func.count(func.distinct(Attendance.person_id))).where(
+            Attendance.timestamp >= day_start
+        )
+    )
+    avg_result = await db.execute(
+        select(func.avg(Attendance.confidence_score)).where(
+            Attendance.timestamp >= day_start
+        )
+    )
 
     return AttendanceTodaySummary(
         total_today=int(total_result.scalar() or 0),
@@ -114,7 +129,9 @@ async def export_csv(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> StreamingResponse:
-    query = select(Attendance, Person.name, Person.department).join(Person, Person.id == Attendance.person_id)
+    query = select(Attendance, Person.name, Person.department).join(
+        Person, Person.id == Attendance.person_id
+    )
     if date_from:
         query = query.where(Attendance.timestamp >= date_from)
     if date_to:
@@ -125,10 +142,19 @@ async def export_csv(
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["attendance_id", "person_id", "name", "department", "timestamp", "confidence"])
+    writer.writerow(
+        ["attendance_id", "person_id", "name", "department", "timestamp", "confidence"]
+    )
     for attendance, name, dept in rows:
         writer.writerow(
-            [attendance.id, attendance.person_id, name, dept, attendance.timestamp.isoformat(), attendance.confidence_score]
+            [
+                attendance.id,
+                attendance.person_id,
+                name,
+                dept,
+                attendance.timestamp.isoformat(),
+                attendance.confidence_score,
+            ]
         )
 
     buffer.seek(0)
@@ -165,7 +191,9 @@ async def update_attendance(
     result = await db.execute(select(Attendance).where(Attendance.id == attendance_id))
     attendance = result.scalar_one_or_none()
     if attendance is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attendance record not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Attendance record not found"
+        )
 
     attendance.timestamp = payload.timestamp
     attendance.confidence_score = payload.confidence_score
@@ -177,13 +205,20 @@ async def update_attendance(
         action="update_attendance",
         entity_type="attendance",
         entity_id=attendance.id,
-        metadata={"timestamp": payload.timestamp.isoformat(), "confidence_score": payload.confidence_score},
+        metadata={
+            "timestamp": payload.timestamp.isoformat(),
+            "confidence_score": payload.confidence_score,
+        },
     )
 
-    person_result = await db.execute(select(Person).where(Person.id == attendance.person_id))
+    person_result = await db.execute(
+        select(Person).where(Person.id == attendance.person_id)
+    )
     person = person_result.scalar_one_or_none()
     if person is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Person not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Person not found"
+        )
 
     return AttendanceRead(
         id=attendance.id,
@@ -205,7 +240,9 @@ async def delete_attendance(
     result = await db.execute(select(Attendance).where(Attendance.id == attendance_id))
     attendance = result.scalar_one_or_none()
     if attendance is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attendance record not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Attendance record not found"
+        )
 
     await db.delete(attendance)
     await db.commit()
@@ -215,7 +252,10 @@ async def delete_attendance(
         action="delete_attendance",
         entity_type="attendance",
         entity_id=attendance.id,
-        metadata={"person_id": attendance.person_id, "timestamp": attendance.timestamp.isoformat()},
+        metadata={
+            "person_id": attendance.person_id,
+            "timestamp": attendance.timestamp.isoformat(),
+        },
     )
     return {"message": "Attendance record deleted"}
 
@@ -237,7 +277,9 @@ async def list_my_attendance(
     total, rows = await paginate_select(
         db,
         query,
-        select(func.count(Attendance.id)).join(Person, Person.id == Attendance.person_id).where(Person.email == identity_email),
+        select(func.count(Attendance.id))
+        .join(Person, Person.id == Attendance.person_id)
+        .where(Person.email == identity_email),
         page=page,
         page_size=page_size,
         use_scalars=False,

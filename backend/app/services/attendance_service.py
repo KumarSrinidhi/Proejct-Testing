@@ -19,7 +19,11 @@ class AttendanceService:
 
     def _prune_last_marked(self, now: datetime) -> None:
         cutoff = now - timedelta(seconds=settings.attendance_cooldown_seconds * 2)
-        stale_ids = [person_id for person_id, marked_at in self.last_marked.items() if marked_at < cutoff]
+        stale_ids = [
+            person_id
+            for person_id, marked_at in self.last_marked.items()
+            if marked_at < cutoff
+        ]
         for person_id in stale_ids:
             self.last_marked.pop(person_id, None)
 
@@ -42,7 +46,9 @@ class AttendanceService:
                 return False, "Cooldown active"
 
         try:
-            face_path = save_cropped_face(person_id=person_id, cropped_face=cropped_face, timestamp=now)
+            face_path = save_cropped_face(
+                person_id=person_id, cropped_face=cropped_face, timestamp=now
+            )
             db.add(
                 Attendance(
                     person_id=person_id,
@@ -53,7 +59,10 @@ class AttendanceService:
             )
             await db.commit()
             self.last_marked[person_id] = now
-            logger.info("Attendance marked", extra={"person_id": person_id, "confidence": confidence})
+            logger.info(
+                "Attendance marked",
+                extra={"person_id": person_id, "confidence": confidence},
+            )
             return True, "Attendance marked"
         except Exception as exc:
             await db.rollback()

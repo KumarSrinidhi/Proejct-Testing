@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
+from fastapi.concurrency import run_in_threadpool
 
 from app.api.deps import authenticate_access_token
 from app.config import get_settings
@@ -48,7 +49,7 @@ async def _process_frame(
 ) -> None:
     started = perf_counter()
     async with SessionLocal() as db:
-        recognized_faces = face_service.recognize_faces(frame)
+        recognized_faces = await run_in_threadpool(face_service.recognize_faces, frame)
         faces_payload: list[dict[str, object]] = []
         any_match = False
 
@@ -62,7 +63,9 @@ async def _process_frame(
             message = "No match"
             if person_id and face is not None:
                 cropped = crop_face(frame, face.bbox)
-                ok, mark_message = await attendance_service.mark_attendance(db, int(person_id), confidence, cropped)
+                ok, mark_message = await attendance_service.mark_attendance(
+                    db, int(person_id), confidence, cropped
+                )
                 attendance_marked = ok
                 message = mark_message
                 any_match = True
@@ -70,7 +73,9 @@ async def _process_frame(
                 try:
                     cropped = crop_face(frame, face.bbox)
                     if cropped.size > 0:
-                        await undetected_face_service.capture_unknown_face(db, cropped, source_type)
+                        await undetected_face_service.capture_unknown_face(
+                            db, cropped, source_type
+                        )
                 except Exception as exc:
                     logger.warning("Failed to capture undetected face: %s", exc)
 
@@ -92,7 +97,9 @@ async def _process_frame(
             "person_id": primary.get("person_id") if primary else None,
             "name": primary.get("name") if primary else None,
             "confidence": float(primary.get("confidence") or 0.0) if primary else 0.0,
-            "attendance_marked": bool(primary.get("attendance_marked")) if primary else False,
+            "attendance_marked": bool(primary.get("attendance_marked"))
+            if primary
+            else False,
             "message": primary.get("message") if primary else "No match",
             "bbox": primary.get("bbox") if primary else None,
             "frame_width": int(frame.shape[1]),
@@ -137,7 +144,9 @@ async def process_stream_socket(websocket: WebSocket) -> None:
     if source_type == "file" and source_path:
         resolved_source = Path(source_path).resolve()
         if not resolved_source.is_relative_to(VIDEO_UPLOADS_ROOT.resolve()):
-            await websocket.send_json({"type": "error", "message": "Invalid source path"})
+            await websocket.send_json(
+                {"type": "error", "message": "Invalid source path"}
+            )
             await websocket.close(code=1008)
             return
         source_path = str(resolved_source)
@@ -162,17 +171,29 @@ async def process_stream_socket(websocket: WebSocket) -> None:
                 if msg_type == "stop":
                     break
                 if msg_type != "frame":
-                    await websocket.send_json({"type": "error", "message": f"Unsupported message type: {msg_type}"})
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "message": f"Unsupported message type: {msg_type}",
+                        }
+                    )
                     continue
 
                 raw_image = message.get("image", "")
-                if isinstance(raw_image, str) and len(raw_image.encode("utf-8")) > settings.max_ws_frame_bytes:
-                    await websocket.send_json({"type": "error", "message": "Frame payload too large"})
+                if (
+                    isinstance(raw_image, str)
+                    and len(raw_image.encode("utf-8")) > settings.max_ws_frame_bytes
+                ):
+                    await websocket.send_json(
+                        {"type": "error", "message": "Frame payload too large"}
+                    )
                     continue
 
-                frame = _decode_data_url_image(raw_image)
+                frame = await run_in_threadpool(_decode_data_url_image, raw_image)
                 if frame is None:
-                    await websocket.send_json({"type": "error", "message": "Invalid webcam frame payload"})
+                    await websocket.send_json(
+                        {"type": "error", "message": "Invalid webcam frame payload"}
+                    )
                     continue
 
                 await _process_frame(

@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Awaitable, Callable
 
+from fastapi.concurrency import run_in_threadpool
 import cv2
 import numpy as np
 
@@ -26,7 +27,9 @@ class VideoIngestionService:
                 raise ValueError("source_path is required for file source")
             return cv2.VideoCapture(self.source_path)
         if self.source_type == "webcam":
-            return cv2.VideoCapture(0 if not self.source_path else int(self.source_path))
+            return cv2.VideoCapture(
+                0 if not self.source_path else int(self.source_path)
+            )
         if self.source_type == "rtsp":
             if not self.source_path:
                 raise ValueError("source_path is required for rtsp source")
@@ -43,12 +46,14 @@ class VideoIngestionService:
                     "Set webcam Source Path to a valid camera index (for example 0, 1) "
                     "or use Video File input."
                 )
-            raise RuntimeError(f"Unable to open {self.source_type} source: {self.source_path}")
+            raise RuntimeError(
+                f"Unable to open {self.source_type} source: {self.source_path}"
+            )
 
         self._running = True
         try:
             while self._running:
-                ok, frame = capture.read()
+                ok, frame = await run_in_threadpool(capture.read)
                 if not ok or frame is None:
                     if self.source_type == "file":
                         break

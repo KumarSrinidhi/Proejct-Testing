@@ -44,7 +44,9 @@ class UndetectedFaceService:
 
         return True
 
-    async def capture_unknown_face(self, db: AsyncSession, cropped_face: np.ndarray, source_type: str) -> bool:
+    async def capture_unknown_face(
+        self, db: AsyncSession, cropped_face: np.ndarray, source_type: str
+    ) -> bool:
         now = datetime.now(timezone.utc)
         face_key = self._fingerprint_face(cropped_face)
         if not self._should_store(face_key, now):
@@ -72,8 +74,12 @@ class UndetectedFaceService:
         return True
 
     async def cleanup_expired(self, db: AsyncSession) -> int:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=settings.undetected_face_retention_days)
-        result = await db.execute(select(UndetectedFace).where(UndetectedFace.created_at < cutoff))
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            days=settings.undetected_face_retention_days
+        )
+        result = await db.execute(
+            select(UndetectedFace).where(UndetectedFace.created_at < cutoff)
+        )
         rows = result.scalars().all()
 
         deleted = 0
@@ -82,7 +88,11 @@ class UndetectedFaceService:
             path = Path(row.image_path)
             try:
                 resolved = path.resolve()
-                if resolved.is_relative_to(allowed_root) and resolved.exists() and resolved.is_file():
+                if (
+                    resolved.is_relative_to(allowed_root)
+                    and resolved.exists()
+                    and resolved.is_file()
+                ):
                     resolved.unlink()
             except Exception as exc:
                 logger.warning("Failed to delete undetected face file: %s", exc)

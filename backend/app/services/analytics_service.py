@@ -9,10 +9,16 @@ from app.models.person import Person
 class AnalyticsService:
     async def get_heatmap_data(self, db: AsyncSession) -> dict[str, object]:
         hourly_result = await db.execute(
-            select(func.strftime("%H", Attendance.timestamp).label("hour"), func.count(Attendance.id)).group_by("hour")
+            select(
+                func.strftime("%H", Attendance.timestamp).label("hour"),
+                func.count(Attendance.id),
+            ).group_by("hour")
         )
         daily_result = await db.execute(
-            select(func.strftime("%w", Attendance.timestamp).label("weekday"), func.count(Attendance.id)).group_by("weekday")
+            select(
+                func.strftime("%w", Attendance.timestamp).label("weekday"),
+                func.count(Attendance.id),
+            ).group_by("weekday")
         )
 
         today = datetime.now(timezone.utc).date()
@@ -20,14 +26,19 @@ class AnalyticsService:
         month_start = datetime.combine(today - timedelta(days=28), datetime.min.time())
 
         week_result = await db.execute(
-            select(func.date(Attendance.timestamp).label("day"), func.count(Attendance.id))
+            select(
+                func.date(Attendance.timestamp).label("day"), func.count(Attendance.id)
+            )
             .where(Attendance.timestamp >= week_start)
             .group_by("day")
             .order_by("day")
         )
 
         month_result = await db.execute(
-            select(func.strftime("%Y-%W", Attendance.timestamp).label("week"), func.count(Attendance.id))
+            select(
+                func.strftime("%Y-%W", Attendance.timestamp).label("week"),
+                func.count(Attendance.id),
+            )
             .where(Attendance.timestamp >= month_start)
             .group_by("week")
             .order_by("week")
@@ -44,8 +55,12 @@ class AnalyticsService:
         }
 
         return {
-            "hourly": {f"{int(hour):02d}:00": count for hour, count in hourly_result.all()},
-            "daily": {weekday_map[str(day)]: count for day, count in daily_result.all()},
+            "hourly": {
+                f"{int(hour):02d}:00": count for hour, count in hourly_result.all()
+            },
+            "daily": {
+                weekday_map[str(day)]: count for day, count in daily_result.all()
+            },
             "weekly_trend": [count for _, count in week_result.all()],
             "monthly_trend": [count for _, count in month_result.all()],
         }
@@ -83,13 +98,23 @@ class AnalyticsService:
             .limit(5)
         )
 
-        avg_conf_result = await db.execute(select(func.avg(cast(Attendance.confidence_score, Float))))
+        avg_conf_result = await db.execute(
+            select(func.avg(cast(Attendance.confidence_score, Float)))
+        )
         avg_conf = avg_conf_result.scalar() or 0.0
 
         return {
-            "attendance_by_department": [{"department": d, "count": c} for d, c in dept_result.all()],
-            "confidence_distribution": [{"bucket": float(b), "count": c} for b, c in confidence_result.all()],
-            "most_frequent_attendees": [{"name": n, "count": c} for n, c in top_result.all()],
-            "least_frequent_attendees": [{"name": n, "count": c} for n, c in low_result.all()],
+            "attendance_by_department": [
+                {"department": d, "count": c} for d, c in dept_result.all()
+            ],
+            "confidence_distribution": [
+                {"bucket": float(b), "count": c} for b, c in confidence_result.all()
+            ],
+            "most_frequent_attendees": [
+                {"name": n, "count": c} for n, c in top_result.all()
+            ],
+            "least_frequent_attendees": [
+                {"name": n, "count": c} for n, c in low_result.all()
+            ],
             "average_confidence": float(avg_conf),
         }

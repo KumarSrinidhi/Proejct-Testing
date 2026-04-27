@@ -6,7 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_admin
 from app.database import get_db
 from app.models.training_log import TrainingLog
-from app.schemas.training import TrainingLogListResponse, TrainingLogRead, TrainingLogUpdate, TrainingSummary
+from app.schemas.training import (
+    TrainingLogListResponse,
+    TrainingLogRead,
+    TrainingLogUpdate,
+    TrainingSummary,
+)
 from app.utils.audit import log_audit_event
 from app.utils.pagination import paginate_select
 from fastapi import HTTPException, status
@@ -19,7 +24,7 @@ router = APIRouter(prefix="/api/train", tags=["training"])
 async def trigger_training(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_admin = Depends(require_admin),
+    current_admin=Depends(require_admin),
 ) -> TrainingSummary:
     summary = await request.app.state.face_service.rebuild_index(db)
     await log_audit_event(
@@ -38,7 +43,9 @@ async def get_training_status(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> TrainingLogRead | None:
-    result = await db.execute(select(TrainingLog).order_by(TrainingLog.timestamp.desc()).limit(1))
+    result = await db.execute(
+        select(TrainingLog).order_by(TrainingLog.timestamp.desc()).limit(1)
+    )
     row = result.scalar_one_or_none()
     if row is None:
         return None
@@ -76,7 +83,9 @@ async def get_training_log(
     result = await db.execute(select(TrainingLog).where(TrainingLog.id == log_id))
     row = result.scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Training log not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Training log not found"
+        )
     return TrainingLogRead.model_validate(row)
 
 
@@ -90,7 +99,9 @@ async def update_training_log(
     result = await db.execute(select(TrainingLog).where(TrainingLog.id == log_id))
     row = result.scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Training log not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Training log not found"
+        )
 
     row.status = payload.status.strip() if payload.status else row.status
     await db.commit()

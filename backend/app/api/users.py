@@ -28,7 +28,9 @@ logger = logging.getLogger(__name__)
 def _normalize_role(role: str) -> str:
     candidate = role.strip().lower()
     if candidate not in VALID_ROLES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role"
+        )
     return candidate
 
 
@@ -63,8 +65,12 @@ async def list_users(
     user_emails = [row.email for row in rows if row.email]
     person_by_email: dict[str, Person] = {}
     if user_emails:
-        persons_result = await db.execute(select(Person).where(Person.email.in_(user_emails)))
-        person_by_email = {person.email: person for person in persons_result.scalars().all()}
+        persons_result = await db.execute(
+            select(Person).where(Person.email.in_(user_emails))
+        )
+        person_by_email = {
+            person.email: person for person in persons_result.scalars().all()
+        }
 
     return UserListResponse(
         items=[
@@ -96,11 +102,15 @@ async def create_user(
 
     existing = await db.execute(select(User).where(User.username == payload.username))
     if existing.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Username already exists"
+        )
 
     existing_email = await db.execute(select(User).where(User.email == email))
     if existing_email.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Email already exists"
+        )
 
     user = User(
         username=payload.username,
@@ -144,7 +154,12 @@ async def create_user(
         action="create_user",
         entity_type="user",
         entity_id=user.id,
-        metadata={"username": user.username, "email": user.email, "role": user.role, "linked_person": bool(linked_person)},
+        metadata={
+            "username": user.username,
+            "email": user.email,
+            "role": user.role,
+            "linked_person": bool(linked_person),
+        },
     )
 
     return UserRead(
@@ -170,13 +185,17 @@ async def update_user_role(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     current_role = _effective_role(user)
 
     if current_role == ROLE_ADMIN and role != ROLE_ADMIN:
         count_result = await db.execute(
-            select(func.count(User.id)).where(or_(User.role == ROLE_ADMIN, User.is_admin.is_(True)))
+            select(func.count(User.id)).where(
+                or_(User.role == ROLE_ADMIN, User.is_admin.is_(True))
+            )
         )
         admin_count = int(count_result.scalar() or 0)
         if admin_count <= 1:
@@ -220,7 +239,9 @@ async def reset_user_password(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     user.hashed_password = hash_password(payload.password)
     await db.commit()
@@ -245,18 +266,28 @@ async def delete_user(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     if user.id == current_admin.id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete current admin user")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete current admin user",
+        )
 
     if _effective_role(user) == ROLE_ADMIN:
         count_result = await db.execute(
-            select(func.count(User.id)).where(or_(User.role == ROLE_ADMIN, User.is_admin.is_(True)))
+            select(func.count(User.id)).where(
+                or_(User.role == ROLE_ADMIN, User.is_admin.is_(True))
+            )
         )
         admin_count = int(count_result.scalar() or 0)
         if admin_count <= 1:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete the last admin")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete the last admin",
+            )
 
     await db.delete(user)
     await db.commit()

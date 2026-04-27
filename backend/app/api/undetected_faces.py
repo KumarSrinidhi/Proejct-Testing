@@ -67,10 +67,14 @@ async def update_undetected_face_review(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ) -> UndetectedFaceRead:
-    result = await db.execute(select(UndetectedFace).where(UndetectedFace.id == face_id))
+    result = await db.execute(
+        select(UndetectedFace).where(UndetectedFace.id == face_id)
+    )
     row = result.scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Undetected face not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Undetected face not found"
+        )
 
     row.reviewed = payload.reviewed
     await db.commit()
@@ -99,23 +103,34 @@ async def preview_undetected_face(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_teacher_or_admin),
 ) -> FileResponse:
-    result = await db.execute(select(UndetectedFace).where(UndetectedFace.id == face_id))
+    result = await db.execute(
+        select(UndetectedFace).where(UndetectedFace.id == face_id)
+    )
     row = result.scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Undetected face not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Undetected face not found"
+        )
 
     path = Path(row.image_path)
     allowed_root = UNDETECTED_FACES_ROOT.resolve()
     try:
         resolved_path = path.resolve()
     except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image path")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image path"
+        )
 
     if not resolved_path.is_relative_to(allowed_root):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Image path outside allowed directory")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Image path outside allowed directory",
+        )
 
     if not resolved_path.exists() or not resolved_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found on disk")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found on disk"
+        )
 
     return FileResponse(path=str(resolved_path), media_type="image/jpeg")
 
@@ -126,10 +141,14 @@ async def delete_undetected_face(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_teacher_or_admin),
 ) -> dict[str, str]:
-    result = await db.execute(select(UndetectedFace).where(UndetectedFace.id == face_id))
+    result = await db.execute(
+        select(UndetectedFace).where(UndetectedFace.id == face_id)
+    )
     row = result.scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Undetected face not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Undetected face not found"
+        )
 
     try:
         path = Path(row.image_path).resolve()

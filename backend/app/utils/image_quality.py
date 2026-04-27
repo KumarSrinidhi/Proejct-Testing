@@ -15,7 +15,10 @@ def validate_training_image(image: np.ndarray) -> str | None:
         return "Unreadable image"
 
     height, width = image.shape[:2]
-    if width < settings.min_training_image_width or height < settings.min_training_image_height:
+    if (
+        width < settings.min_training_image_width
+        or height < settings.min_training_image_height
+    ):
         return f"Image too small (minimum {settings.min_training_image_width}x{settings.min_training_image_height})"
 
     grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

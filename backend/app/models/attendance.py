@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -24,6 +24,7 @@ class Attendance(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     person = relationship("Person", back_populates="attendance_records")
+    exceptions = relationship("AttendanceException", back_populates="attendance", cascade="all, delete-orphan")
 
     # Composite index for common queries (e.g., attendance by person and date range)
     __table_args__ = (

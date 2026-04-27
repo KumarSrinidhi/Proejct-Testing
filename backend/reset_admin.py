@@ -2,28 +2,31 @@
 Reset admin credentials directly in the SQLite database.
 Uses the same bcrypt hash as the backend (rounds=12).
 """
+
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from passlib.context import CryptContext
 import sqlite3
 
 # ── New credentials ───────────────────────────────────────────────
-NEW_USERNAME   = "admin"
-NEW_EMAIL      = "admin@visionattend.local"
-NEW_PASSWORD   = "VisionAdmin@2026"
-NEW_ROLE       = "admin"
-NEW_IS_ADMIN   = 1
+NEW_USERNAME = "admin"
+NEW_EMAIL = "admin@visionattend.local"
+NEW_PASSWORD = "VisionAdmin@2026"
+NEW_ROLE = "admin"
+NEW_IS_ADMIN = 1
 # ─────────────────────────────────────────────────────────────────
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 hashed = pwd_context.hash(NEW_PASSWORD)
 
 conn = sqlite3.connect("attendance.db")
-cur  = conn.cursor()
+cur = conn.cursor()
 
-cur.execute("""
+cur.execute(
+    """
     UPDATE users
     SET username        = ?,
         email           = ?,
@@ -31,7 +34,9 @@ cur.execute("""
         role            = ?,
         is_admin        = ?
     WHERE id = 1
-""", (NEW_USERNAME, NEW_EMAIL, hashed, NEW_ROLE, NEW_IS_ADMIN))
+""",
+    (NEW_USERNAME, NEW_EMAIL, hashed, NEW_ROLE, NEW_IS_ADMIN),
+)
 
 conn.commit()
 affected = cur.rowcount

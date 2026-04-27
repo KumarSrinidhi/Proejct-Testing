@@ -11,9 +11,19 @@ from slowapi.util import get_remote_address
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import attendance, attendance_exceptions, audit_logs, auth, persons, training, undetected_faces, users, video
+from app.api import (
+    attendance,
+    attendance_exceptions,
+    audit_logs,
+    auth,
+    persons,
+    training,
+    undetected_faces,
+    users,
+    video,
+)
 from app.database import Base, SessionLocal, engine
-from app.models import *  # noqa: F401,F403 - ensure all model metadata is loaded
+import app.models  # noqa: F401 - ensure all model metadata is loaded
 from app.models.user import ROLE_ADMIN, ROLE_STUDENT, User
 from app.services.attendance_service import AttendanceService
 from app.services.face_recognition import FaceRecognitionService
@@ -47,6 +57,7 @@ def _build_error_payload(
         payload["error"]["details"] = details
     return payload
 
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO if not settings.debug else logging.DEBUG,
@@ -66,13 +77,15 @@ default_cors_origins = [
 
 # Load additional origins from environment variable (comma-separated)
 configured_cors_origins = [
-    origin.strip() 
-    for origin in settings.cors_origins.split(",") 
-    if origin.strip()
+    origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()
 ]
 
 # Combine default and configured origins, remove duplicates
-allow_origins = sorted(set(default_cors_origins + configured_cors_origins)) if settings.environment != "production" else configured_cors_origins
+allow_origins = (
+    sorted(set(default_cors_origins + configured_cors_origins))
+    if settings.environment != "production"
+    else configured_cors_origins
+)
 
 logger.info(f"CORS allowed origins: {allow_origins}")
 
@@ -89,7 +102,7 @@ async def lifespan(app: FastAPI):
 
         # Fail fast if password hashing dependencies are incompatible.
         ensure_password_hashing_compatibility()
-        
+
         # Create database tables
         try:
             async with engine.begin() as conn:
@@ -97,9 +110,13 @@ async def lifespan(app: FastAPI):
                 table_info = await conn.execute(text("PRAGMA table_info(users)"))
                 user_columns = {row[1] for row in table_info.fetchall()}
                 if "role" not in user_columns:
-                    await conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(20)"))
+                    await conn.execute(
+                        text("ALTER TABLE users ADD COLUMN role VARCHAR(20)")
+                    )
                 if "email" not in user_columns:
-                    await conn.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR(200)"))
+                    await conn.execute(
+                        text("ALTER TABLE users ADD COLUMN email VARCHAR(200)")
+                    )
             logger.info("Database tables created/verified")
         except SQLAlchemyError as e:
             logger.error(f"Failed to create database tables: {e}")
@@ -108,7 +125,9 @@ async def lifespan(app: FastAPI):
         # Ensure a default admin exists for first-time setup
         try:
             if settings.is_production and settings.admin_password in {"", "admin123"}:
-                raise RuntimeError("ADMIN_PASSWORD must be set to a strong value in production")
+                raise RuntimeError(
+                    "ADMIN_PASSWORD must be set to a strong value in production"
+                )
 
             async with SessionLocal() as db:
                 # Keep existing rows compatible when upgrading from older schemas.
@@ -144,7 +163,9 @@ async def lifespan(app: FastAPI):
                         )
                     )
                     await db.commit()
-                    logger.info(f"Created default admin user: {settings.admin_username}")
+                    logger.info(
+                        f"Created default admin user: {settings.admin_username}"
+                    )
                 else:
                     changed = False
                     if user.role != ROLE_ADMIN:
@@ -203,10 +224,7 @@ async def lifespan(app: FastAPI):
     logger.info("Application shutting down...")
 
 
-app = FastAPI(
-    title="Face Recognition Attendance System",
-    lifespan=lifespan
-)
+app = FastAPI(title="Face Recognition Attendance System", lifespan=lifespan)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -217,7 +235,11 @@ app.add_middleware(SlowAPIMiddleware)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     detail_value = exc.detail
     if isinstance(detail_value, dict):
-        message = str(detail_value.get("message") or detail_value.get("detail") or "Request failed")
+        message = str(
+            detail_value.get("message")
+            or detail_value.get("detail")
+            or "Request failed"
+        )
         details = detail_value
     elif isinstance(detail_value, list):
         message = "Request failed"
@@ -240,7 +262,9 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 
 @app.exception_handler(RequestValidationError)
-async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def request_validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     errors = exc.errors()
     return JSONResponse(
         status_code=422,
@@ -269,13 +293,21 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         ),
     )
 
+
 # CORS middleware: Security - specify exact origins instead of wildcards (*)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_origin_regex=settings.cors_origin_regex if settings.environment == "development" else None,
+    allow_origin_regex=settings.cors_origin_regex
+    if settings.environment == "development"
+    else None,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],  # Be specific, don't allow all methods
+    allow_methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE",
+    ],  # Be specific, don't allow all methods
     allow_headers=["*"],
 )
 
@@ -295,6 +327,7 @@ async def log_request_middleware(request: Request, call_next):
         client,
     )
     return response
+
 
 # Include routers
 app.include_router(auth.router)

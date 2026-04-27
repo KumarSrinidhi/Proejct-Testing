@@ -47,9 +47,17 @@ class FaceRecognitionService:
             import insightface
 
             ctx_id = 0 if self._gpu_available else -1
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if self._gpu_available else ["CPUExecutionProvider"]
-            self._face_app = insightface.app.FaceAnalysis(name=settings.insightface_model, providers=providers)
-            self._face_app.prepare(ctx_id=ctx_id, det_thresh=settings.face_detection_threshold)
+            providers = (
+                ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                if self._gpu_available
+                else ["CPUExecutionProvider"]
+            )
+            self._face_app = insightface.app.FaceAnalysis(
+                name=settings.insightface_model, providers=providers
+            )
+            self._face_app.prepare(
+                ctx_id=ctx_id, det_thresh=settings.face_detection_threshold
+            )
             logger.info("InsightFace initialized", extra={"ctx_id": ctx_id})
         except Exception as exc:
             logger.exception("Failed to initialize InsightFace: %s", exc)
@@ -68,7 +76,9 @@ class FaceRecognitionService:
             if self._gpu_available:
                 try:
                     self._gpu_resources = faiss.StandardGpuResources()
-                    self._index = faiss.index_cpu_to_gpu(self._gpu_resources, 0, self._index)
+                    self._index = faiss.index_cpu_to_gpu(
+                        self._gpu_resources, 0, self._index
+                    )
                     self._faiss_gpu_enabled = True
                     logger.info("FAISS GPU index initialized")
                 except Exception as gpu_exc:
@@ -90,7 +100,9 @@ class FaceRecognitionService:
                 self._torch = None
                 logger.warning("Torch import failed for GPU search: %s", exc)
                 if settings.gpu_strict_mode:
-                    raise RuntimeError("GPU strict mode requires torch with CUDA support") from exc
+                    raise RuntimeError(
+                        "GPU strict mode requires torch with CUDA support"
+                    ) from exc
 
     def _normalize(self, emb: np.ndarray) -> np.ndarray:
         norm = np.linalg.norm(emb)
@@ -118,20 +130,27 @@ class FaceRecognitionService:
             target_longest = int(longest * scale)
             if target_longest > 1920:
                 continue
-            resized = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            resized = cv2.resize(
+                image, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
+            )
             candidates.append(resized)
         return candidates
 
     def _extract_face(self, image: np.ndarray) -> Any | None:
         faces = self._detect_faces(image)
         if faces:
-            return max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+            return max(
+                faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1])
+            )
 
         for candidate in self._resized_candidates(image):
             faces = self._detect_faces(candidate)
             if faces:
                 logger.info("Face detected after resize fallback")
-                return max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+                return max(
+                    faces,
+                    key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
+                )
 
         return None
 
@@ -142,7 +161,9 @@ class FaceRecognitionService:
         # Sort left-to-right for stable rendering order.
         return sorted(faces, key=lambda f: float(f.bbox[0]))
 
-    def extract_embedding(self, image: np.ndarray) -> tuple[np.ndarray | None, Any | None]:
+    def extract_embedding(
+        self, image: np.ndarray
+    ) -> tuple[np.ndarray | None, Any | None]:
         try:
             face = self._extract_face(image)
             if face is None:
@@ -161,7 +182,9 @@ class FaceRecognitionService:
             logger.warning("Face embedding extraction failed: %s", exc)
             return None
 
-    async def add_person_embeddings(self, person_id: int, image_paths: list[str], db: AsyncSession) -> tuple[int, int]:
+    async def add_person_embeddings(
+        self, person_id: int, image_paths: list[str], db: AsyncSession
+    ) -> tuple[int, int]:
         added = 0
         failed = 0
         for image_path in image_paths:
@@ -176,24 +199,36 @@ class FaceRecognitionService:
                     continue
 
                 result = await db.execute(
-                    select(PersonImage).where(PersonImage.person_id == person_id, PersonImage.image_path == image_path)
+                    select(PersonImage).where(
+                        PersonImage.person_id == person_id,
+                        PersonImage.image_path == image_path,
+                    )
                 )
                 person_image = result.scalar_one_or_none()
                 if person_image is None:
-                    person_image = PersonImage(person_id=person_id, image_path=image_path)
+                    person_image = PersonImage(
+                        person_id=person_id, image_path=image_path
+                    )
                     db.add(person_image)
 
                 person_image.encoding_blob = json.dumps(embedding.tolist())
                 added += 1
             except Exception as exc:
-                logger.warning("Failed processing image", extra={"path": image_path, "error": str(exc)})
+                logger.warning(
+                    "Failed processing image",
+                    extra={"path": image_path, "error": str(exc)},
+                )
                 failed += 1
 
         await db.commit()
         return added, failed
 
-    async def get_person_embedding(self, person_id: int, db: AsyncSession) -> np.ndarray | None:
-        result = await db.execute(select(PersonImage).where(PersonImage.person_id == person_id))
+    async def get_person_embedding(
+        self, person_id: int, db: AsyncSession
+    ) -> np.ndarray | None:
+        result = await db.execute(
+            select(PersonImage).where(PersonImage.person_id == person_id)
+        )
         rows = result.scalars().all()
         vectors: list[np.ndarray] = []
         for row in rows:
@@ -203,7 +238,10 @@ class FaceRecognitionService:
                 vec = np.array(json.loads(row.encoding_blob), dtype=np.float32)
                 vectors.append(vec)
             except Exception as exc:
-                logger.warning("Invalid encoding blob", extra={"person_id": person_id, "error": str(exc)})
+                logger.warning(
+                    "Invalid encoding blob",
+                    extra={"person_id": person_id, "error": str(exc)},
+                )
 
         if not vectors:
             return None
@@ -218,7 +256,9 @@ class FaceRecognitionService:
         if self._gpu_available:
             try:
                 self._gpu_resources = self._faiss.StandardGpuResources()
-                self._index = self._faiss.index_cpu_to_gpu(self._gpu_resources, 0, self._index)
+                self._index = self._faiss.index_cpu_to_gpu(
+                    self._gpu_resources, 0, self._index
+                )
                 self._faiss_gpu_enabled = True
             except Exception as exc:
                 logger.warning("Failed to create FAISS GPU index: %s", exc)
@@ -251,7 +291,9 @@ class FaceRecognitionService:
             return None, 0.0
         return self._index_to_person_id[idx], score
 
-    def _search_embedding(self, emb: np.ndarray) -> tuple[int | None, str | None, float]:
+    def _search_embedding(
+        self, emb: np.ndarray
+    ) -> tuple[int | None, str | None, float]:
         with self._state_lock:
             if self._gpu_available and self._torch_embeddings is not None:
                 person_id, score = self._search_with_torch_gpu(emb)
@@ -304,7 +346,9 @@ class FaceRecognitionService:
         for person in persons:
             with self._state_lock:
                 self._person_name_cache[person.id] = person.name
-            image_result = await db.execute(select(PersonImage).where(PersonImage.person_id == person.id))
+            image_result = await db.execute(
+                select(PersonImage).where(PersonImage.person_id == person.id)
+            )
             images = image_result.scalars().all()
             total_images += len(images)
 
@@ -361,7 +405,9 @@ class FaceRecognitionService:
             "duration_ms": duration_ms,
         }
 
-    def recognize_face(self, face_image: np.ndarray) -> tuple[int | None, str | None, float, Any | None]:
+    def recognize_face(
+        self, face_image: np.ndarray
+    ) -> tuple[int | None, str | None, float, Any | None]:
         with self._state_lock:
             has_index = bool(self._index_to_person_id)
         if not has_index:
@@ -435,14 +481,27 @@ class FaceRecognitionService:
         try:
             payload = json.loads(cache_path.read_text(encoding="utf-8"))
             with self._state_lock:
-                self._index_to_person_id = [int(x) for x in payload.get("index_to_person_id", [])]
-                self._embeddings_cache = {int(k): v for k, v in payload.get("embeddings_cache", {}).items()}
-                self._person_name_cache = {int(k): v for k, v in payload.get("person_name_cache", {}).items()}
+                self._index_to_person_id = [
+                    int(x) for x in payload.get("index_to_person_id", [])
+                ]
+                self._embeddings_cache = {
+                    int(k): v for k, v in payload.get("embeddings_cache", {}).items()
+                }
+                self._person_name_cache = {
+                    int(k): v for k, v in payload.get("person_name_cache", {}).items()
+                }
 
             with self._state_lock:
-                valid_person_ids = [person_id for person_id in self._index_to_person_id if person_id in self._embeddings_cache]
+                valid_person_ids = [
+                    person_id
+                    for person_id in self._index_to_person_id
+                    if person_id in self._embeddings_cache
+                ]
                 self._index_to_person_id = valid_person_ids
-                vectors = [np.array(self._embeddings_cache[person_id], dtype=np.float32) for person_id in self._index_to_person_id]
+                vectors = [
+                    np.array(self._embeddings_cache[person_id], dtype=np.float32)
+                    for person_id in self._index_to_person_id
+                ]
             if vectors:
                 matrix = np.stack(vectors).astype(np.float32)
                 self._build_faiss_index(matrix)

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import require_admin, require_teacher_or_admin
+from app.api.deps import require_teacher_or_admin
 from app.database import get_db
 from app.models.attendance import Attendance
 from app.models.attendance_exception import AttendanceException
@@ -42,7 +42,9 @@ async def list_attendance_exceptions(
 
     total, rows = await paginate_select(
         db,
-        query.order_by(AttendanceException.created_at.desc(), AttendanceException.id.desc()),
+        query.order_by(
+            AttendanceException.created_at.desc(), AttendanceException.id.desc()
+        ),
         count_query,
         page=page,
         page_size=page_size,
@@ -62,12 +64,18 @@ async def create_attendance_exception(
     current_user: User = Depends(require_teacher_or_admin),
 ) -> AttendanceExceptionRead:
     if payload.exception_type not in VALID_EXCEPTION_TYPES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid exception type")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid exception type"
+        )
 
-    attendance_result = await db.execute(select(Attendance).where(Attendance.id == payload.attendance_id))
+    attendance_result = await db.execute(
+        select(Attendance).where(Attendance.id == payload.attendance_id)
+    )
     attendance = attendance_result.scalar_one_or_none()
     if attendance is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attendance record not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Attendance record not found"
+        )
 
     row = AttendanceException(
         attendance_id=payload.attendance_id,

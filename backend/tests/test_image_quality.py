@@ -21,7 +21,9 @@ def test_validate_training_image_rejects_blurry_image() -> None:
 
 
 def test_validate_training_image_accepts_reasonable_image() -> None:
-    image = np.random.default_rng(42).integers(0, 255, size=(256, 256, 3), dtype=np.uint8)
+    image = np.random.default_rng(42).integers(
+        0, 255, size=(256, 256, 3), dtype=np.uint8
+    )
 
     reason = validate_training_image(image)
 

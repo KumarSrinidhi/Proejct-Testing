@@ -1,22 +1,21 @@
 from functools import lru_cache
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
-    
+
     Security Notes:
     - SECRET_KEY: Must be changed in production. Do not expose in logs.
     - DATABASE_URL: Should use strong credentials stored in environment variables.
     - DEBUG: Must be False in production to prevent sensitive data leakage in logs.
     - CORS_ALLOWED_ORIGINS: Specify exact origins instead of using wildcards.
     """
+
     model_config: SettingsConfigDict = SettingsConfigDict(
-        env_file=".env", 
-        env_file_encoding="utf-8", 
-        extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
     # Application config
@@ -61,12 +60,14 @@ class Settings(BaseSettings):
     admin_password: str = ""
 
     # Upload limits
-    max_image_upload_bytes: int = 15 * 1024 * 1024   # 15 MB — supports high-res camera photos
+    max_image_upload_bytes: int = (
+        15 * 1024 * 1024
+    )  # 15 MB — supports high-res camera photos
     max_video_upload_bytes: int = 100 * 1024 * 1024
     max_ws_frame_bytes: int = 2 * 1024 * 1024
     min_training_image_width: int = 64
     min_training_image_height: int = 64
-    min_training_image_sharpness: float = 20.0        # Relaxed — real-world photos pass
+    min_training_image_sharpness: float = 20.0  # Relaxed — real-world photos pass
     undetected_face_retention_days: int = 7
     undetected_face_capture_cooldown_seconds: int = 15
 
@@ -74,6 +75,12 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production environment."""
         return self.environment.lower() in ("production", "prod")
+
+    @model_validator(mode="after")
+    def validate_production_settings(self) -> "Settings":
+        if self.is_production and self.secret_key == "change-me-in-production":
+            raise ValueError("SECRET_KEY must be changed in production")
+        return self
 
 
 @lru_cache

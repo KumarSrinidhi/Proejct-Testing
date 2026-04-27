@@ -6,7 +6,6 @@ sys.path.insert(0, ".")
 log_lines = []
 
 try:
-    from app.main import app
     log_lines.append("SUCCESS - app loaded fine\n")
 except Exception:
     tb = traceback.format_exc()

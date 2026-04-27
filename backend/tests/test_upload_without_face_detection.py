@@ -29,10 +29,14 @@ async def test_get_person_embedding_skips_none_encoding_blob() -> None:
 
     # Create PersonImages: one with embedding, one without
     embedding_data = np.ones((512,), dtype=np.float32).tolist()
-    
+
     rows = [
-        PersonImage(person_id=1, image_path="a.jpg", encoding_blob=json.dumps(embedding_data)),
-        PersonImage(person_id=1, image_path="b.jpg", encoding_blob=None),  # No embedding
+        PersonImage(
+            person_id=1, image_path="a.jpg", encoding_blob=json.dumps(embedding_data)
+        ),
+        PersonImage(
+            person_id=1, image_path="b.jpg", encoding_blob=None
+        ),  # No embedding
     ]
 
     result_proxy = MagicMock()
@@ -45,7 +49,11 @@ async def test_get_person_embedding_skips_none_encoding_blob() -> None:
     # Assert: Should return the average of only the image with embedding
     assert emb is not None
     assert emb.shape == (512,)
-    assert np.allclose(emb, np.ones((512,), dtype=np.float32) / np.linalg.norm(np.ones((512,), dtype=np.float32)))
+    assert np.allclose(
+        emb,
+        np.ones((512,), dtype=np.float32)
+        / np.linalg.norm(np.ones((512,), dtype=np.float32)),
+    )
 
 
 # ============================================================================
@@ -108,7 +116,9 @@ async def test_get_person_embedding_with_mixed_embeddings_and_none() -> None:
 
     # Assert: Should average only the non-None embeddings (1, 2, 3)
     assert emb is not None
-    mean_embedding = np.mean([np.ones(512), np.full(512, 2.0), np.full(512, 3.0)], axis=0)
+    mean_embedding = np.mean(
+        [np.ones(512), np.full(512, 2.0), np.full(512, 3.0)], axis=0
+    )
     mean_embedding = mean_embedding / np.linalg.norm(mean_embedding)
     assert np.allclose(emb, mean_embedding.astype(np.float32), atol=1e-6)
 
@@ -128,7 +138,9 @@ async def test_get_person_embedding_single_valid_with_multiple_none() -> None:
 
     rows = [
         PersonImage(person_id=1, image_path="a.jpg", encoding_blob=None),
-        PersonImage(person_id=1, image_path="b.jpg", encoding_blob=json.dumps(embedding_data)),
+        PersonImage(
+            person_id=1, image_path="b.jpg", encoding_blob=json.dumps(embedding_data)
+        ),
         PersonImage(person_id=1, image_path="c.jpg", encoding_blob=None),
     ]
 
@@ -142,7 +154,9 @@ async def test_get_person_embedding_single_valid_with_multiple_none() -> None:
     # Assert: Should return the single valid embedding (normalized)
     assert emb is not None
     assert emb.shape == (512,)
-    expected = np.ones((512,), dtype=np.float32) / np.linalg.norm(np.ones((512,), dtype=np.float32))
+    expected = np.ones((512,), dtype=np.float32) / np.linalg.norm(
+        np.ones((512,), dtype=np.float32)
+    )
     assert np.allclose(emb, expected, atol=1e-6)
 
 
@@ -155,17 +169,17 @@ async def test_get_person_embedding_single_valid_with_multiple_none() -> None:
 async def test_rebuild_index_handles_extract_embedding_none() -> None:
     """Test that rebuild_index handles face_service.extract_embedding returning (None, None)."""
     service = FaceRecognitionService()
-    
+
     # Mock extract_embedding to return None (no face detected)
     service.extract_embedding = MagicMock(return_value=(None, None))
     service._faiss = None
     service._index = None
     service._torch = None
     service._gpu_available = False
-    
+
     # Test that a None embedding is handled gracefully
     emb, _ = service.extract_embedding(np.zeros((100, 100, 3), dtype=np.uint8))
-    
+
     assert emb is None
 
 
@@ -180,16 +194,16 @@ async def test_training_log_created_with_mixed_images() -> None:
     # This is more of an integration concept test
     # The key is that rebuild_index skips persons with no embeddings
     # and logs the status
-    
+
     from app.models.training_log import TrainingLog
-    
+
     # Create a mock TrainingLog to ensure it works
     log = TrainingLog(
         total_persons=2,
         total_images=5,  # 5 images, but some might have None embedding
-        status="success"
+        status="success",
     )
-    
+
     assert log.total_persons == 2
     assert log.total_images == 5
     assert log.status == "success"

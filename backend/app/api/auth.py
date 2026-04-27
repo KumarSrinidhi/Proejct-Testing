@@ -26,10 +26,12 @@ settings = get_settings()
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+async def login(
+    payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)
+) -> TokenResponse:
     """
     User login endpoint.
-    
+
     Security: Passwords are hashed with bcrypt (rounds=12).
     JWT tokens are created with HS256 algorithm.
     """
@@ -38,7 +40,9 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
     user = result.scalar_one_or_none()
     if user is None or not verify_password(payload.password, user.hashed_password):
         await record_login_attempt(payload.username, db)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+        )
 
     access_token, expires_at = create_access_token(user.username)
     refresh_token, _ = create_refresh_token(user.username)
@@ -81,26 +85,32 @@ async def refresh(
 ) -> TokenResponse:
     """
     Token refresh endpoint.
-    
+
     Security: Refresh tokens are validated before issuing new access tokens.
     Errors are logged without exposing sensitive data (no JWT secret in logs).
     """
     refresh_token = (payload.refresh_token if payload else None) or refresh_token_cookie
     if not refresh_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+        )
 
     try:
         subject = decode_token(refresh_token, expected_type="refresh")
     except TokenError as exc:
         # Security: Log the error type but not the token or secret
         logger.warning("Token refresh failed: invalid refresh token")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+        ) from exc
 
     result = await db.execute(select(User).where(User.username == subject))
     user = result.scalar_one_or_none()
     if user is None:
         logger.warning(f"Token refresh failed: user not found (username: {subject})")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+        )
 
     access_token, expires_at = create_access_token(user.username)
     refresh_token, _ = create_refresh_token(user.username)

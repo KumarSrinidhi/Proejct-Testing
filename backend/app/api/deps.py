@@ -18,12 +18,16 @@ async def authenticate_access_token(token: str, db: AsyncSession) -> User:
     try:
         subject = decode_token(token, expected_type="access")
     except TokenError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        ) from exc
 
     result = await db.execute(select(User).where(User.username == subject))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+        )
     return user
 
 
@@ -39,7 +43,9 @@ async def get_current_user(
         token = access_token
 
     if not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token"
+        )
 
     return await authenticate_access_token(token, db)
 
@@ -47,15 +53,21 @@ async def get_current_user(
 async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role == ROLE_ADMIN or current_user.is_admin:
         return current_user
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
+    )
 
 
 def require_roles(*allowed_roles: str):
     async def _require_roles(current_user: User = Depends(get_current_user)) -> User:
-        normalized = current_user.role or (ROLE_ADMIN if current_user.is_admin else ROLE_STUDENT)
+        normalized = current_user.role or (
+            ROLE_ADMIN if current_user.is_admin else ROLE_STUDENT
+        )
         if normalized in allowed_roles:
             return current_user
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+        )
 
     return _require_roles
 
@@ -83,7 +95,10 @@ async def check_login_rate_limit(username: str, db: AsyncSession) -> None:
     attempts = int(count_result.scalar() or 0)
 
     if attempts >= settings.login_rate_limit_attempts:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many login attempts")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts",
+        )
 
 
 async def record_login_attempt(username: str, db: AsyncSession) -> None:

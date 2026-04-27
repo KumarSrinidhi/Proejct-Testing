@@ -28,7 +28,13 @@ def _safe_filename(filename: str, fallback_ext: str = "") -> str:
 
 
 def ensure_storage_dirs() -> None:
-    for path in [PERSON_IMAGES_ROOT, ATTENDANCE_CROPS_ROOT, UNDETECTED_FACES_ROOT, VIDEO_UPLOADS_ROOT, MODEL_ROOT]:
+    for path in [
+        PERSON_IMAGES_ROOT,
+        ATTENDANCE_CROPS_ROOT,
+        UNDETECTED_FACES_ROOT,
+        VIDEO_UPLOADS_ROOT,
+        MODEL_ROOT,
+    ]:
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -49,23 +55,39 @@ def save_person_image(person_id: int, filename: str, image_bytes: bytes) -> str:
     return str(output_path)
 
 
-def save_cropped_face(person_id: int, cropped_face: np.ndarray, timestamp: datetime) -> str:
+def save_cropped_face(
+    person_id: int, cropped_face: np.ndarray, timestamp: datetime
+) -> str:
     ensure_storage_dirs()
-    day_dir = ATTENDANCE_CROPS_ROOT / str(timestamp.year) / f"{timestamp.month:02d}" / f"{timestamp.day:02d}"
+    day_dir = (
+        ATTENDANCE_CROPS_ROOT
+        / str(timestamp.year)
+        / f"{timestamp.month:02d}"
+        / f"{timestamp.day:02d}"
+    )
     day_dir.mkdir(parents=True, exist_ok=True)
     file_path = day_dir / f"{person_id}_{int(timestamp.timestamp())}.jpg"
     ok = cv2.imwrite(str(file_path), cropped_face)
     if not ok:
         raise RuntimeError("Failed to write cropped face image")
-    logger.info("Saved cropped face", extra={"path": str(file_path), "person_id": person_id})
+    logger.info(
+        "Saved cropped face", extra={"path": str(file_path), "person_id": person_id}
+    )
     return str(file_path)
 
 
 def save_undetected_face(cropped_face: np.ndarray, timestamp: datetime) -> str:
     ensure_storage_dirs()
-    day_dir = UNDETECTED_FACES_ROOT / str(timestamp.year) / f"{timestamp.month:02d}" / f"{timestamp.day:02d}"
+    day_dir = (
+        UNDETECTED_FACES_ROOT
+        / str(timestamp.year)
+        / f"{timestamp.month:02d}"
+        / f"{timestamp.day:02d}"
+    )
     day_dir.mkdir(parents=True, exist_ok=True)
-    file_path = day_dir / f"unknown_{int(timestamp.timestamp())}_{secrets.token_hex(4)}.jpg"
+    file_path = (
+        day_dir / f"unknown_{int(timestamp.timestamp())}_{secrets.token_hex(4)}.jpg"
+    )
     ok = cv2.imwrite(str(file_path), cropped_face)
     if not ok:
         raise RuntimeError("Failed to write undetected face image")
