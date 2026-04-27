@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi import Request
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin
@@ -98,6 +98,7 @@ async def list_persons(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> PersonListResponse:
+    search = search.strip().lower()
     query = select(Person)
     count_query = select(func.count(Person.id))
     if not include_inactive:
@@ -135,8 +136,8 @@ async def get_person(
     if person is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Person not found")
 
-    image_count_result = await db.execute(select(func.count(PersonImage.id)).where(PersonImage.person_id == person_id))
-    attendance_count_result = await db.execute(select(func.count(Attendance.id)).where(Attendance.person_id == person_id))
+    image_count_result = await db.execute(select(func.count(PersonImage.id)).where(PersonImage.person_id == person_id, PersonImage.is_active.is_(True)))
+    attendance_count_result = await db.execute(select(func.count(Attendance.id)).where(Attendance.person_id == person_id, Attendance.is_active.is_(True)))
 
     return PersonDetail(
         id=person.id,
@@ -190,6 +191,9 @@ async def delete_person(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Person not found")
 
     person.is_active = False
+    # Cascade soft-delete for related images and attendance
+    await db.execute(update(PersonImage).where(PersonImage.person_id == person_id).values(is_active=False))
+    await db.execute(update(Attendance).where(Attendance.person_id == person_id).values(is_active=False))
     await db.commit()
     await log_audit_event(
         db,
@@ -288,7 +292,7 @@ async def list_person_images(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> list[PersonImageRead]:
-    result = await db.execute(select(PersonImage).where(PersonImage.person_id == person_id).order_by(PersonImage.id.desc()))
+    result = await db.execute(select(PersonImage).where(PersonImage.person_id == person_id, PersonImage.is_active.is_(True)).order_by(PersonImage.id.desc()))
     images = result.scalars().all()
     return [PersonImageRead.model_validate(image) for image in images]
 
@@ -301,7 +305,7 @@ async def preview_image(
 ) -> FileResponse:
     result = await db.execute(select(PersonImage).where(PersonImage.id == image_id))
     image = result.scalar_one_or_none()
-    if image is None:
+    if image is None or not image.is_active:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
 
     path = Path(image.image_path)

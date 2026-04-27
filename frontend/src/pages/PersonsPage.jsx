@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { personApi } from "../services/api";
 
+const isValidEmail = (email) => {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(email);
+};
+
 export default function PersonsPage() {
   const [persons, setPersons] = useState([]);
   const [totalPersons, setTotalPersons] = useState(0);
@@ -8,6 +13,7 @@ export default function PersonsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "info" });
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
@@ -25,12 +31,12 @@ export default function PersonsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const { data } = await personApi.list({ page, page_size: pageSize, search });
+      const { data } = await personApi.list({ page, page_size: pageSize, search: debouncedSearch });
       const items = data?.items || data || [];
       setPersons(items);
       setTotalPersons(data?.total ?? items.length);
     } catch (error) {
-      setMsg(error?.response?.data?.detail || "Failed to load persons.", "danger");
+      setMsg(error?.response?.data?.detail || error?.message || "Failed to load persons.", "danger");
       setPersons([]);
       setTotalPersons(0);
     } finally {
@@ -38,10 +44,19 @@ export default function PersonsPage() {
     }
   };
 
-  useEffect(() => { load(); }, [page, search]);
+  useEffect(() => { load(); }, [page, debouncedSearch]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const createPerson = async (event) => {
     event.preventDefault();
+    if (form.email && !isValidEmail(form.email)) {
+      setMsg("Invalid email format.", "danger");
+      return;
+    }
     setBusy(true);
     setMsg("");
     try {
@@ -51,7 +66,7 @@ export default function PersonsPage() {
       setFormOpen(false);
       await load();
     } catch (error) {
-      setMsg(error?.response?.data?.detail || "Failed to create person.", "danger");
+      setMsg(error?.response?.data?.detail || error?.message || "Failed to create person.", "danger");
     } finally {
       setBusy(false);
     }
@@ -66,7 +81,7 @@ export default function PersonsPage() {
       setMsg("Person deleted.", "success");
       await load();
     } catch (error) {
-      setMsg(error?.response?.data?.detail || "Failed to delete person.", "danger");
+      setMsg(error?.response?.data?.detail || error?.message || "Failed to delete person.", "danger");
     } finally {
       setBusy(false);
     }
@@ -106,8 +121,7 @@ export default function PersonsPage() {
         setMsg(`${ok.length} image${ok.length > 1 ? "s" : ""} uploaded. Retrain the model to apply changes.`, "success");
       }
     } catch (error) {
-      const detail = error?.response?.data?.detail;
-      setMsg(detail || "Upload failed — check file format (JPG/PNG) and size.", "danger");
+      setMsg(error?.response?.data?.detail || error?.message || "Upload failed — check file format (JPG/PNG) and size.", "danger");
     }
 
     setUploadFiles([]);
@@ -267,6 +281,7 @@ export default function PersonsPage() {
                 placeholder="Search persons…"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                disabled={busy}
               />
             </div>
           </div>

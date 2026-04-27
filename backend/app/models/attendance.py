@@ -21,6 +21,7 @@ class Attendance(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     confidence_score: Mapped[float] = mapped_column(Float, nullable=False)
     cropped_face_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     person = relationship("Person", back_populates="attendance_records")
 

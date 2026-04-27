@@ -5,6 +5,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -204,6 +207,10 @@ app = FastAPI(
     title="Face Recognition Attendance System",
     lifespan=lifespan
 )
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
 
 
 @app.exception_handler(HTTPException)

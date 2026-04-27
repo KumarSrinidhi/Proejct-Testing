@@ -94,6 +94,17 @@ export default function TrainingPage() {
 
   useEffect(() => { loadPersonImages(selectedPersonId); }, [selectedPersonId]);
 
+  useEffect(() => {
+    return () => {
+      personImages.forEach((img) => {
+        if (img.previewUrl) {
+          URL.revokeObjectURL(img.previewUrl);
+        }
+      });
+    };
+  }, [personImages]);
+
+
   return (
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       {/* Header */}

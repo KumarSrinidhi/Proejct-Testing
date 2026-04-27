@@ -12,9 +12,9 @@ export default function ImageUploader({ onUpload, selectedPersonId, uploading, u
   };
 
   return (
-    <form onSubmit={submit} className="card space-y-3">
-      <h3 className="font-display text-lg">Upload Reference Images</h3>
-      <p className="text-sm text-slate-600">
+    <form onSubmit={submit} className="card" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <div className="section-title">Upload Reference Images</div>
+      <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", margin: 0 }}>
         {selectedPersonId ? `Selected Person ID: ${selectedPersonId}` : "No person selected"}
       </p>
       <input
@@ -22,25 +22,24 @@ export default function ImageUploader({ onUpload, selectedPersonId, uploading, u
         accept="image/jpeg,image/png"
         multiple
         onChange={(event) => setFiles(Array.from(event.target.files || []))}
-        className="block w-full rounded border p-2"
+        className="input"
       />
       <button
-        className="rounded-lg bg-accent text-white px-4 py-2 disabled:opacity-60"
+        className="btn btn-primary"
         type="submit"
         disabled={uploading || !selectedPersonId || files.length === 0}
       >
         {uploading ? "Uploading..." : "Validate & Upload"}
       </button>
       {uploading ? (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs text-slate-600">
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--text-muted)" }}>
             <span>Upload progress</span>
             <span>{uploadPercent}%</span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded bg-slate-200">
+          <div style={{ height: 8, width: "100%", overflow: "hidden", borderRadius: 4, background: "rgba(255,255,255,0.05)" }}>
             <div
-              className="h-full bg-accent transition-all duration-200"
-              style={{ width: `${uploadPercent}%` }}
+              style={{ height: "100%", background: "var(--primary)", transition: "width 0.2s", width: `${uploadPercent}%` }}
             />
           </div>
         </div>

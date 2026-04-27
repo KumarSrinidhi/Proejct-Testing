@@ -47,5 +47,6 @@ class PersonImage(Base):
     image_path: Mapped[str] = mapped_column(String(500), nullable=False)
     encoding_blob: Mapped[str | None] = mapped_column(Text, nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     person = relationship("Person", back_populates="images")

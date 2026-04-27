@@ -45,6 +45,7 @@ export default function LiveRecognitionPage() {
   const manualStopRef = useRef(false);
   const activeStreamConfigRef = useRef(null);
   const sourceTypeRef = useRef(sourceType);
+  const uploadControllerRef = useRef(null);
 
   useEffect(() => { sourceTypeRef.current = sourceType; }, [sourceType]);
 
@@ -71,7 +72,12 @@ export default function LiveRecognitionPage() {
       if (!ctx) return;
       ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
       const image = canvas.toDataURL("image/jpeg", 0.75);
-      socket.send(JSON.stringify({ type: "frame", image }));
+      const payload = JSON.stringify({ type: "frame", image });
+      // Drop frame if buffer exceeds ~1MB to prevent memory leak on slow networks
+      if (socket.bufferedAmount > 1024 * 1024) {
+        return;
+      }
+      socket.send(payload);
     }, 700);
   };
   const stopLocalPreview = () => {
@@ -101,6 +107,7 @@ export default function LiveRecognitionPage() {
       stopBrowserFrameStream();
       stopLocalPreview();
       if (previewObjectUrlRef.current) { URL.revokeObjectURL(previewObjectUrlRef.current); previewObjectUrlRef.current = null; }
+      if (uploadControllerRef.current) { uploadControllerRef.current.abort(); uploadControllerRef.current = null; }
     };
   }, []);
 
@@ -148,7 +155,7 @@ export default function LiveRecognitionPage() {
         if (manualStopRef.current) { setConnectionState("idle"); return; }
         const nextAttempt = reconnectAttemptsRef.current + 1;
         reconnectAttemptsRef.current = nextAttempt;
-        if (nextAttempt > 5) { setConnectionState("error"); setStatusMessage("Connection lost. Retry limit reached."); return; }
+        if (nextAttempt > 10) { setConnectionState("error"); setStatusMessage("Connection lost. Retry limit reached."); return; }
         const delayMs = Math.min(1000 * 2 ** (nextAttempt - 1), 10000);
         setConnectionState("reconnecting");
         setStatusMessage(`Connection lost. Reconnecting in ${Math.round(delayMs / 1000)}s…`);
@@ -172,16 +179,20 @@ export default function LiveRecognitionPage() {
     formData.append("file", videoFile);
     setUploading(true);
     setStatusMessage("");
+    const controller = new AbortController();
+    uploadControllerRef.current = controller;
     try {
-      const { data } = await videoApi.upload(formData);
+      const { data } = await videoApi.upload(formData, { signal: controller.signal });
       setSourceType("file");
       setSourcePath(data.video_path || "");
       setStatusMessage("Video uploaded. You can start live processing now.");
       await startLocalPreview();
     } catch (error) {
+      if (error.name === 'AbortError') return;
       setStatusMessage(error?.response?.data?.detail || "Video upload failed.");
     } finally {
       setUploading(false);
+      uploadControllerRef.current = null;
     }
   };
 
@@ -390,7 +401,7 @@ export default function LiveRecognitionPage() {
           <video
             ref={videoRef}
             style={{
-              width: "100%", height: "100%", objectFit: "fill",
+              width: "100%", height: "100%", objectFit: "contain",
               display: previewMode === "idle" ? "none" : "block",
             }}
             autoPlay

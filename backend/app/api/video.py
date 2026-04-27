@@ -1,4 +1,7 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from slowapi import RateLimiter
+from werkzeug.utils import secure_filename
+import logging
 
 from app.api.deps import require_admin
 from app.config import get_settings
@@ -22,7 +25,7 @@ def _is_supported_video_bytes(payload: bytes) -> bool:
     return False
 
 
-@router.post("/upload")
+@router.post("/upload", dependencies=[Depends(RateLimiter(requests=5, window=60))])
 async def upload_video(
     file: UploadFile = File(...),
     _: object = Depends(require_admin),
@@ -44,5 +47,7 @@ async def upload_video(
     if not _is_supported_video_bytes(payload):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid video file content")
 
-    path = save_uploaded_video(file.filename or "video.mp4", payload)
+    filename = secure_filename(file.filename or "video.mp4")
+    path = save_uploaded_video(filename, payload)
+    logging.info(f"Video uploaded: {filename} to {path}")
     return {"video_path": path}
