@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from slowapi import RateLimiter
 from werkzeug.utils import secure_filename
 import logging
 
@@ -25,7 +24,7 @@ def _is_supported_video_bytes(payload: bytes) -> bool:
     return False
 
 
-@router.post("/upload", dependencies=[Depends(RateLimiter(requests=5, window=60))])
+@router.post("/upload")
 async def upload_video(
     file: UploadFile = File(...),
     _: object = Depends(require_admin),

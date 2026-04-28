@@ -273,7 +273,8 @@ class FaceRecognitionService:
                 raise RuntimeError("GPU strict mode requires torch CUDA tensor search")
             return
         try:
-            self._torch_embeddings = self._torch.from_numpy(vectors).to("cuda")
+            device = "cuda" if getattr(self._torch, "cuda", None) is not None and self._torch.cuda.is_available() else "cpu"
+            self._torch_embeddings = self._torch.from_numpy(vectors).to(device)
         except Exception as exc:
             logger.warning("Failed to build GPU embedding matrix: %s", exc)
             if settings.gpu_strict_mode:
@@ -282,7 +283,8 @@ class FaceRecognitionService:
     def _search_with_torch_gpu(self, emb: np.ndarray) -> tuple[int | None, float]:
         if self._torch is None or self._torch_embeddings is None:
             return None, 0.0
-        query = self._torch.from_numpy(emb.astype(np.float32)).to("cuda")
+        device = "cuda" if getattr(self._torch, "cuda", None) is not None and self._torch.cuda.is_available() else "cpu"
+        query = self._torch.from_numpy(emb.astype(np.float32)).to(device)
         sims = self._torch.matmul(self._torch_embeddings, query)
         best_score, best_idx = self._torch.max(sims, dim=0)
         idx = int(best_idx.item())
