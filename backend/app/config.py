@@ -1,5 +1,5 @@
 from functools import lru_cache
-from pydantic import Field, model_validator
+from pydantic import Field, AliasChoices, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,7 +34,12 @@ class Settings(BaseSettings):
     # Recognition settings
     recognition_threshold: float = 0.6
     face_detection_threshold: float = 0.35
-    attendance_cooldown_seconds: int = 300
+    attendance_window_seconds: int = Field(
+        default=300,
+        validation_alias=AliasChoices(
+            "ATTENDANCE_WINDOW_SECONDS", "ATTENDANCE_COOLDOWN_SECONDS"
+        ),
+    )
     frame_process_interval: float = 1.0
 
     # GPU settings
@@ -75,6 +80,11 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production environment."""
         return self.environment.lower() in ("production", "prod")
+
+    @property
+    def attendance_cooldown_seconds(self) -> int:
+        """Backward-compatible alias for the attendance window duration."""
+        return self.attendance_window_seconds
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> "Settings":

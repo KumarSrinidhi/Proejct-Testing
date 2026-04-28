@@ -117,6 +117,29 @@ async def lifespan(app: FastAPI):
                     await conn.execute(
                         text("ALTER TABLE users ADD COLUMN email VARCHAR(200)")
                     )
+                # Ensure person_images table has expected columns (backfill schema for older DBs)
+                try:
+                    table_info = await conn.execute(text("PRAGMA table_info(person_images)"))
+                    person_image_columns = {row[1] for row in table_info.fetchall()}
+                    if "is_active" not in person_image_columns:
+                        await conn.execute(
+                            text("ALTER TABLE person_images ADD COLUMN is_active BOOLEAN DEFAULT 1 NOT NULL")
+                        )
+                except Exception:
+                    # If person_images table doesn't exist yet or PRAGMA fails, skip
+                    pass
+
+                # Ensure attendance table has expected columns
+                try:
+                    table_info = await conn.execute(text("PRAGMA table_info(attendance)"))
+                    attendance_columns = {row[1] for row in table_info.fetchall()}
+                    if "is_active" not in attendance_columns:
+                        await conn.execute(
+                            text("ALTER TABLE attendance ADD COLUMN is_active BOOLEAN DEFAULT 1 NOT NULL")
+                        )
+                except Exception:
+                    # If attendance table doesn't exist yet or PRAGMA fails, skip
+                    pass
             logger.info("Database tables created/verified")
         except SQLAlchemyError as e:
             logger.error(f"Failed to create database tables: {e}")

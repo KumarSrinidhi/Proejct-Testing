@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import logging
 
 import numpy as np
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -14,19 +15,6 @@ settings = get_settings()
 
 
 class AttendanceService:
-    def __init__(self) -> None:
-        self.last_marked: dict[int, datetime] = {}
-
-    def _prune_last_marked(self, now: datetime) -> None:
-        cutoff = now - timedelta(seconds=settings.attendance_cooldown_seconds * 2)
-        stale_ids = [
-            person_id
-            for person_id, marked_at in self.last_marked.items()
-            if marked_at < cutoff
-        ]
-        for person_id in stale_ids:
-            self.last_marked.pop(person_id, None)
-
     async def mark_attendance(
         self,
         db: AsyncSession,
@@ -35,15 +23,22 @@ class AttendanceService:
         cropped_face: np.ndarray,
     ) -> tuple[bool, str]:
         now = datetime.now(timezone.utc)
-        self._prune_last_marked(now)
 
         if confidence <= settings.recognition_threshold:
             return False, "Confidence too low"
 
-        if person_id in self.last_marked:
-            elapsed = (now - self.last_marked[person_id]).total_seconds()
-            if elapsed < settings.attendance_cooldown_seconds:
-                return False, "Cooldown active"
+        result = await db.execute(
+            select(Attendance)
+            .where(Attendance.person_id == person_id)
+            .order_by(Attendance.timestamp.desc())
+            .limit(1)
+        )
+        latest_attendance = result.scalar_one_or_none()
+        if latest_attendance is not None:
+            elapsed = (now - latest_attendance.timestamp).total_seconds()
+            if elapsed < settings.attendance_window_seconds:
+                remaining = int(settings.attendance_window_seconds - elapsed)
+                return False, f"Attendance already marked for this window ({remaining}s remaining)"
 
         try:
             face_path = save_cropped_face(
@@ -58,7 +53,6 @@ class AttendanceService:
                 )
             )
             await db.commit()
-            self.last_marked[person_id] = now
             logger.info(
                 "Attendance marked",
                 extra={"person_id": person_id, "confidence": confidence},
