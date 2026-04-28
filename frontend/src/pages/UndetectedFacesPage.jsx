@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { undetectedFaceApi } from "../services/api";
+import { formatDateTimeIst } from "../utils/datetime";
 
 export default function UndetectedFacesPage() {
   const [items, setItems] = useState([]);
@@ -192,7 +193,7 @@ export default function UndetectedFacesPage() {
                   Source: <span style={{ color: "var(--text-secondary)" }}>{item.source_type}</span>
                 </div>
                 <div style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "0.875rem" }}>
-                  {new Date(item.created_at).toLocaleString()}
+                  {formatDateTimeIst(item.created_at)}
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button

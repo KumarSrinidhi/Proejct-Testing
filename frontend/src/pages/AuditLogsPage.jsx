@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { auditApi } from "../services/api";
+import { formatDateTimeIst } from "../utils/datetime";
 
 const ACTION_BADGE = {
   create: "badge-emerald",
@@ -130,7 +131,7 @@ export default function AuditLogsPage() {
                 {items.map((row) => (
                   <tr key={row.id}>
                     <td style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.75rem", whiteSpace: "nowrap" }}>
-                      {new Date(row.timestamp).toLocaleString()}
+                      {formatDateTimeIst(row.timestamp)}
                     </td>
                     <td>
                       <div>

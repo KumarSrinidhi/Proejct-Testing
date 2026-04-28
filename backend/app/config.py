@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     app_name: str = "Face Recognition Attendance System"
     environment: str = "development"
     debug: bool = False
+    timezone: str = "Asia/Kolkata"  # India Standard Time (IST, UTC+5:30)
 
     # Database (use environment variables for credentials in production)
     database_url: str = "sqlite+aiosqlite:///./attendance.db"
@@ -85,6 +86,11 @@ class Settings(BaseSettings):
     def attendance_cooldown_seconds(self) -> int:
         """Backward-compatible alias for the attendance window duration."""
         return self.attendance_window_seconds
+
+    @property
+    def timezone_name(self) -> str:
+        """Get configured timezone name (default: Asia/Kolkata for India)."""
+        return self.timezone
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> "Settings":

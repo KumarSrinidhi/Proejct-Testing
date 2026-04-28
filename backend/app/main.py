@@ -12,6 +12,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import (
+    admin,
     attendance,
     attendance_exceptions,
     audit_logs,
@@ -353,6 +354,7 @@ async def log_request_middleware(request: Request, call_next):
 
 
 # Include routers
+app.include_router(admin.router)
 app.include_router(auth.router)
 app.include_router(audit_logs.router)
 app.include_router(attendance_exceptions.router)

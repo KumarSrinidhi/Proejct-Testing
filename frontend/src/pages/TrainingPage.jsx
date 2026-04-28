@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { personApi, trainingApi } from "../services/api";
+import { formatDateTimeIst, formatDateIst } from "../utils/datetime";
 
 const STATUS_BADGE = {
   success: "badge-emerald",
@@ -187,7 +188,7 @@ export default function TrainingPage() {
               }}>
                 <span className={`badge ${STATUS_BADGE[log.status] || "badge-slate"}`}>{log.status}</span>
                 <span style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                  {new Date(log.timestamp).toLocaleString()}
+                  {formatDateTimeIst(log.timestamp)}
                 </span>
                 <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
                   {log.total_persons} persons · {log.total_images} images
@@ -263,7 +264,7 @@ export default function TrainingPage() {
                 )}
                 <div style={{ padding: "0.5rem 0.625rem" }}>
                   <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontFamily: "var(--mono, monospace)", marginBottom: "0.375rem" }}>
-                    {new Date(img.uploaded_at).toLocaleDateString()}
+                    {formatDateIst(img.uploaded_at)}
                   </div>
                   <button
                     type="button"

@@ -15,6 +15,12 @@ settings = get_settings()
 
 
 class AttendanceService:
+    @staticmethod
+    def _as_utc(moment: datetime) -> datetime:
+        if moment.tzinfo is None or moment.utcoffset() is None:
+            return moment.replace(tzinfo=timezone.utc)
+        return moment.astimezone(timezone.utc)
+
     async def mark_attendance(
         self,
         db: AsyncSession,
@@ -35,7 +41,8 @@ class AttendanceService:
         )
         latest_attendance = result.scalar_one_or_none()
         if latest_attendance is not None:
-            elapsed = (now - latest_attendance.timestamp).total_seconds()
+            latest_timestamp = self._as_utc(latest_attendance.timestamp)
+            elapsed = (now - latest_timestamp).total_seconds()
             if elapsed < settings.attendance_window_seconds:
                 remaining = int(settings.attendance_window_seconds - elapsed)
                 return False, f"Attendance already marked for this window ({remaining}s remaining)"

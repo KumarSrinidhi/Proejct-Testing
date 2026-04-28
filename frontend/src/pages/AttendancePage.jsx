@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { attendanceApi, attendanceExceptionApi } from "../services/api";
+import { formatDateTimeIst } from "../utils/datetime";
 
 const EXCEPTION_TYPES = [
   { value: "late", label: "Late", cls: "badge-amber" },
@@ -238,7 +239,7 @@ export default function AttendancePage() {
                       <span className="badge badge-slate">{row.department}</span>
                     </td>
                     <td style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.8rem" }}>
-                      {new Date(row.timestamp).toLocaleString()}
+                      {formatDateTimeIst(row.timestamp)}
                     </td>
                     <td>
                       <ConfidencePill value={row.confidence_score} />
@@ -359,7 +360,7 @@ export default function AttendancePage() {
                     return (
                       <tr key={ex.id}>
                         <td style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.78rem" }}>
-                          {new Date(ex.created_at).toLocaleString()}
+                          {formatDateTimeIst(ex.created_at)}
                         </td>
                         <td style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.78rem", color: "var(--text-muted)" }}>
                           {ex.attendance_id}

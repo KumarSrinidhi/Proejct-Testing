@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { userApi } from "../services/api";
+import { formatDateIst } from "../utils/datetime";
 
 const ROLE_OPTIONS = ["admin", "teacher", "student"];
 const ROLE_BADGE = {
@@ -284,7 +285,7 @@ export default function AdminUsersPage() {
                       }
                     </td>
                     <td style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                      {new Date(user.created_at).toLocaleDateString()}
+                      {formatDateIst(user.created_at)}
                     </td>
                     <td>
                       <div style={{ display: "flex", gap: "0.5rem" }}>

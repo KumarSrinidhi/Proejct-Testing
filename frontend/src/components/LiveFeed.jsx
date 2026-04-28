@@ -1,15 +1,6 @@
-export default function LiveFeed({ events = [], onClear }) {
-  const formatIst = (value) => {
-    if (!value) return "—";
-    return new Intl.DateTimeFormat("en-IN", {
-      timeZone: "Asia/Kolkata",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    }).format(new Date(value));
-  };
+import { formatDateTimeIst } from "../utils/datetime";
 
+export default function LiveFeed({ events = [], onClear }) {
   return (
     <div className="card">
       <div className="section-header">
@@ -89,7 +80,7 @@ export default function LiveFeed({ events = [], onClear }) {
                   <div style={{ fontSize: "0.875rem", fontWeight: 700, color: confColor, fontFamily: "var(--mono, monospace)" }}>
                     {(confidence * 100).toFixed(1)}%
                   </div>
-                  <div style={{ fontSize: "0.65rem", color: "var(--text-muted)" }}>{formatIst(event.timestamp)}</div>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-muted)" }}>{formatDateTimeIst(event.timestamp)}</div>
                 </div>
 
                 {/* Attendance badge */}

@@ -87,3 +87,29 @@ async def test_mark_attendance_after_window_expires(db_session) -> None:
 
     assert ok is True
     assert message == "Attendance marked"
+
+
+@pytest.mark.asyncio
+async def test_mark_attendance_handles_naive_timestamp(db_session) -> None:
+    service = AttendanceService()
+    person = Person(name="Test Person", email="test.person4@example.com", department="QA")
+    db_session.add(person)
+    await db_session.commit()
+    await db_session.refresh(person)
+    frame = np.zeros((64, 64, 3), dtype=np.uint8)
+
+    existing = Attendance(
+        person_id=person.id,
+        timestamp=datetime.utcnow() - timedelta(seconds=10),
+        confidence_score=0.9,
+        cropped_face_path="/tmp/existing-naive.jpg",
+    )
+    db_session.add(existing)
+    await db_session.commit()
+
+    ok, message = await service.mark_attendance(
+        db=db_session, person_id=person.id, confidence=0.95, cropped_face=frame
+    )
+
+    assert ok is False
+    assert "Attendance already marked" in message
