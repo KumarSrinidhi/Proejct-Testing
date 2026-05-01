@@ -86,6 +86,7 @@ export default function LiveRecognitionPage() {
     setPreviewMode("idle");
   };
   const startLocalPreview = async () => {
+    console.log("[Live] startLocalPreview called, sourceType:", sourceType, "previewMode before:", previewMode);
     stopLocalPreview();
     if (sourceType === "webcam") {
       try {
@@ -93,11 +94,14 @@ export default function LiveRecognitionPage() {
         webcamStreamRef.current = stream;
         if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
         setPreviewMode("webcam");
+        console.log("[Live] Set previewMode to webcam");
       } catch { setStatusMessage("Failed to open webcam preview."); }
       return;
     }
-    if (sourceType === "file" && previewUrl) { setPreviewMode("file"); return; }
+    if (sourceType === "file" && previewUrl) { setPreviewMode("file"); console.log("[Live] Set previewMode to file"); return; }
+    if (sourceType === "rtsp") { setPreviewMode("rtsp"); console.log("[Live] Set previewMode to rtsp"); return; }
     setPreviewMode("idle");
+    console.log("[Live] Set previewMode to idle");
   };
 
   useEffect(() => {
@@ -123,6 +127,7 @@ export default function LiveRecognitionPage() {
   }, [previewMode, previewUrl]);
 
   const connectSocket = (streamConfig) => {
+    console.log("[Live] connectSocket called, setting connectionState to connecting");
     setConnectionState("connecting");
     const socket = createRecognitionSocket(
       streamConfig,
@@ -169,7 +174,11 @@ export default function LiveRecognitionPage() {
           }
         }, delayMs);
       },
-      () => { setConnectionState("error"); setStatusMessage("WebSocket connection error."); },
+      () => { 
+        const isRtsp = sourceTypeRef.current === "rtsp";
+        setConnectionState("error"); 
+        setStatusMessage(isRtsp ? "Failed to connect to RTSP stream. Check URL and network." : "WebSocket connection failed."); 
+      },
       () => { reconnectAttemptsRef.current = 0; setConnectionState("connected"); }
     );
     socketRef.current = socket;
@@ -199,7 +208,9 @@ export default function LiveRecognitionPage() {
   };
 
   const start = async () => {
+    console.log("[Live] Start called, sourceType:", sourceType, "sourcePath:", sourcePath);
     if (sourceType === "file" && !sourcePath) { setStatusMessage("Upload a video or enter a valid server file path."); return; }
+    if (sourceType === "rtsp" && !sourcePath) { setStatusMessage("Enter a valid RTSP URL."); return; }
     await startLocalPreview();
     manualStopRef.current = false;
     clearReconnectTimer();
@@ -208,10 +219,11 @@ export default function LiveRecognitionPage() {
     if (socketRef.current) socketRef.current.close();
     const wsSourceType = sourceType === "webcam" ? "browser_webcam" : sourceType;
     const streamConfig = { source_type: wsSourceType, source_path: sourcePath || null };
+    console.log("[Live] Connecting with config:", streamConfig);
     activeStreamConfigRef.current = streamConfig;
     connectSocket(streamConfig);
     if (sourceType === "webcam") { setStatusMessage("Processing started using browser webcam."); startBrowserFrameStream(); return; }
-    setStatusMessage("Processing started.");
+    setStatusMessage("Processing started - connecting to stream...");
   };
 
   const stop = () => {
@@ -404,7 +416,7 @@ export default function LiveRecognitionPage() {
             ref={videoRef}
             style={{
               width: "100%", height: "100%", objectFit: "contain",
-              display: previewMode === "idle" ? "none" : "block",
+              display: previewMode === "idle" || previewMode === "rtsp" ? "none" : "block",
             }}
             autoPlay
             muted
@@ -426,6 +438,40 @@ export default function LiveRecognitionPage() {
               </svg>
               <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.875rem" }}>
                 Start processing to show preview
+              </p>
+            </div>
+          )}
+
+          {previewMode === "rtsp" && connectionState !== "idle" && (
+            <div style={{
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: "0.75rem",
+              background: "linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(59,130,246,0.1) 100%)",
+            }}>
+              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--success-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--success)", animation: "pulse 2s infinite" }} />
+              </div>
+              <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.875rem", fontWeight: 500 }}>
+                RTSP Stream Connected
+              </p>
+              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.75rem" }}>
+                Processing on server - frames appear below
+              </p>
+            </div>
+          )}
+
+          {previewMode === "rtsp" && connectionState === "idle" && (
+            <div style={{
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: "0.75rem",
+            }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "rgba(255,255,255,0.2)" }}>
+                <path d="M2 12h2l3-9 4 18 4-9 3 9h6" />
+              </svg>
+              <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.875rem" }}>
+                Enter RTSP URL and click Start
               </p>
             </div>
           )}
@@ -484,7 +530,10 @@ export default function LiveRecognitionPage() {
       {/* Event Feed */}
       <LiveFeed events={events} onClear={clearEvents} />
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.1); } }
+`}</style>
     </div>
   );
 }

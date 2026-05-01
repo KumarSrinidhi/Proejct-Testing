@@ -37,7 +37,7 @@ class VideoIngestionService:
         raise ValueError(f"Unsupported source_type: {self.source_type}")
 
     async def process_stream(self, frame_callback: FrameCallback) -> None:
-        capture = self._open_capture()
+        capture = await run_in_threadpool(self._open_capture)
         if not capture.isOpened():
             capture.release()
             if self.source_type == "webcam":

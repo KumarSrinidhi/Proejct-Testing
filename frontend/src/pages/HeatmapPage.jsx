@@ -32,7 +32,7 @@ export default function HeatmapPage() {
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       <div>
         <h1 className="page-title">Attendance Heatmap</h1>
-        <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+        <p style={{ color: "var(--text-3)", fontSize: "0.875rem", marginTop: "0.25rem" }}>
           Hourly and daily attendance patterns visualized as heatmaps
         </p>
       </div>
@@ -48,11 +48,11 @@ export default function HeatmapPage() {
         <>
           <div className="card animate-fade-in">
             <div className="section-title mb-3">Hourly Pattern</div>
-            <AttendanceHeatmap title="Hourly Pattern" data={data.hourly} />
+            <AttendanceHeatmap data={data.hourly} />
           </div>
           <div className="card animate-fade-in" style={{ animationDelay: "0.1s" }}>
             <div className="section-title mb-3">Daily Pattern</div>
-            <AttendanceHeatmap title="Daily Pattern" data={data.daily} />
+            <AttendanceHeatmap data={data.daily} />
           </div>
         </>
       )}
