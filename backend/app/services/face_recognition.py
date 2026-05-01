@@ -400,6 +400,8 @@ class FaceRecognitionService:
         duration_ms = int((perf_counter() - start) * 1000)
         self._save_cache_to_disk()
         self._save_index_to_disk()
+        # Auto-snapshot after every full rebuild — provides an instant recovery point.
+        self.save_snapshot(label="post_rebuild")
         return {
             "total_persons": len(self._index_to_person_id),
             "total_images": total_images,
@@ -407,9 +409,103 @@ class FaceRecognitionService:
             "duration_ms": duration_ms,
         }
 
+    # ------------------------------------------------------------------
+    # Incremental index update — add / remove a single person
+    # without a full global rebuild.
+    # ------------------------------------------------------------------
+
+    async def add_person_to_index(self, person_id: int, db: AsyncSession) -> bool:
+        """
+        Add (or refresh) a single person in the FAISS index.
+        Safe to call after uploading new photos for a person.
+
+        Returns True on success, False if no valid embedding was found.
+        """
+        result = await db.execute(
+            select(Person).where(Person.id == person_id, Person.is_active.is_(True))
+        )
+        person = result.scalar_one_or_none()
+        if person is None:
+            logger.warning("add_person_to_index: person %s not found", person_id)
+            return False
+
+        mean_emb = await self.get_person_embedding(person_id, db)
+        if mean_emb is None:
+            logger.warning("add_person_to_index: no embedding for person %s", person_id)
+            return False
+
+        mean_emb = mean_emb.astype(np.float32)
+        with self._state_lock:
+            self._person_name_cache[person_id] = person.name
+            self._embeddings_cache[person_id] = mean_emb.tolist()
+
+            # Replace existing slot if already present, otherwise append.
+            if person_id in self._index_to_person_id:
+                slot = self._index_to_person_id.index(person_id)
+            else:
+                slot = None
+                self._index_to_person_id.append(person_id)
+
+            # Rebuild the matrix from the updated cache.
+            vectors = [
+                np.array(self._embeddings_cache[pid], dtype=np.float32)
+                for pid in self._index_to_person_id
+            ]
+
+        matrix = np.stack(vectors).astype(np.float32)
+        self._build_faiss_index(matrix)
+        self._build_gpu_embedding_matrix(matrix)
+        self._save_cache_to_disk()
+        self._save_index_to_disk()
+        logger.info(
+            "Incremental add person_id=%s slot=%s total=%s",
+            person_id,
+            slot,
+            len(self._index_to_person_id),
+        )
+        return True
+
+    async def remove_person_from_index(self, person_id: int) -> bool:
+        """
+        Remove a single person from the in-memory index.
+        Call this when a person is soft-deleted or deactivated.
+
+        Returns True if the person was present, False otherwise.
+        """
+        with self._state_lock:
+            if person_id not in self._index_to_person_id:
+                return False
+            self._index_to_person_id = [
+                pid for pid in self._index_to_person_id if pid != person_id
+            ]
+            self._embeddings_cache.pop(person_id, None)
+            self._person_name_cache.pop(person_id, None)
+            vectors = [
+                np.array(self._embeddings_cache[pid], dtype=np.float32)
+                for pid in self._index_to_person_id
+            ]
+
+            # BUG-09 fix: build the FAISS index while still holding the lock so
+            # a concurrent add/rebuild cannot modify _embeddings_cache between
+            # the lock release and the matrix construction.
+            if vectors:
+                matrix = np.stack(vectors).astype(np.float32)
+                self._build_faiss_index(matrix)
+                self._build_gpu_embedding_matrix(matrix)
+            else:
+                self._index = None
+                self._torch_embeddings = None
+
+        self._save_cache_to_disk()
+        self._save_index_to_disk()
+        logger.info("Incremental remove person_id=%s", person_id)
+        return True
+
+
     def recognize_face(
         self, face_image: np.ndarray
     ) -> tuple[int | None, str | None, float, Any | None]:
+
         with self._state_lock:
             has_index = bool(self._index_to_person_id)
         if not has_index:
@@ -461,6 +557,98 @@ class FaceRecognitionService:
             self._faiss.write_index(cpu_index, str(index_path))
         except Exception as exc:
             logger.warning("Failed to save FAISS index: %s", exc)
+
+    # ------------------------------------------------------------------
+    # FAISS versioned snapshots — backup & recovery
+    # ------------------------------------------------------------------
+
+    def save_snapshot(self, label: str = "") -> str | None:
+        """
+        Create a timestamped snapshot of the current FAISS index and
+        embeddings cache so they can be restored if the index gets corrupted.
+
+        Returns the snapshot directory name on success, None on failure.
+        """
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        suffix = f"_{label}" if label else ""
+        snap_name = f"snapshot_{ts}{suffix}"
+        snap_dir = self._model_dir / "snapshots" / snap_name
+        try:
+            snap_dir.mkdir(parents=True, exist_ok=True)
+            # Copy cache JSON
+            cache_src = self._model_dir / "embeddings_cache.json"
+            if cache_src.exists():
+                import shutil
+                shutil.copy2(cache_src, snap_dir / "embeddings_cache.json")
+            # Copy FAISS binary
+            index_src = self._model_dir / "faiss_index.bin"
+            if index_src.exists():
+                shutil.copy2(index_src, snap_dir / "faiss_index.bin")
+            # Write metadata
+            meta = {
+                "created_at": ts,
+                "label": label,
+                "total_persons": len(self._index_to_person_id),
+            }
+            (snap_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+            logger.info("FAISS snapshot saved: %s", snap_name)
+            return snap_name
+        except Exception as exc:
+            logger.error("Failed to save FAISS snapshot: %s", exc)
+            return None
+
+    def list_snapshots(self) -> list[dict[str, object]]:
+        """Return all snapshots sorted newest-first."""
+        snap_root = self._model_dir / "snapshots"
+        if not snap_root.exists():
+            return []
+        results = []
+        for snap_dir in sorted(snap_root.iterdir(), reverse=True):
+            if not snap_dir.is_dir():
+                continue
+            meta_path = snap_dir / "meta.json"
+            if meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    meta["name"] = snap_dir.name
+                    results.append(meta)
+                except Exception:
+                    results.append({"name": snap_dir.name})
+            else:
+                results.append({"name": snap_dir.name})
+        return results
+
+    def restore_snapshot(self, snap_name: str) -> bool:
+        """
+        Restore the FAISS index and embeddings cache from a named snapshot.
+
+        Returns True on success, False if the snapshot does not exist or
+        is invalid.
+        """
+        import shutil
+        snap_dir = self._model_dir / "snapshots" / snap_name
+        if not snap_dir.is_dir():
+            logger.error("Snapshot not found: %s", snap_name)
+            return False
+        try:
+            # Restore cache JSON
+            cache_snap = snap_dir / "embeddings_cache.json"
+            if cache_snap.exists():
+                shutil.copy2(cache_snap, self._model_dir / "embeddings_cache.json")
+            # Restore FAISS binary
+            index_snap = snap_dir / "faiss_index.bin"
+            if index_snap.exists():
+                shutil.copy2(index_snap, self._model_dir / "faiss_index.bin")
+            # Reload into memory
+            self.load_index_from_disk()
+            logger.info("FAISS snapshot restored: %s", snap_name)
+            return True
+        except Exception as exc:
+            logger.error("Failed to restore FAISS snapshot: %s", exc)
+            return False
+
+
 
     def _save_cache_to_disk(self) -> None:
         try:

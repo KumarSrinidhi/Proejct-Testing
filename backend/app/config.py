@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     undetected_face_retention_days: int = 7
     undetected_face_capture_cooldown_seconds: int = 15
 
+    # HR Integration — set HR_WEBHOOK_URL in .env to enable automatic push export.
+    # Leave empty to disable.
+    hr_webhook_url: str = Field(default="", alias="HR_WEBHOOK_URL")
+
+
     @property
     def is_production(self) -> bool:
         """Check if running in production environment."""

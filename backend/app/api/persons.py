@@ -69,6 +69,26 @@ async def create_person(
             detail="User with this email already exists",
         )
 
+    # Prevent duplicate persons: same name (case-insensitive) + same department.
+    # Different departments are allowed (e.g. two "John Smith" in separate depts).
+    dup_result = await db.execute(
+        select(Person).where(
+            Person.name.ilike(payload.name.strip()),
+            Person.department.ilike(payload.department.strip()),
+            Person.is_active.is_(True),
+        )
+    )
+    existing_dup = dup_result.scalar_one_or_none()
+    if existing_dup is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"A person named '{existing_dup.name}' already exists in department "
+                f"'{existing_dup.department}' (ID: {existing_dup.id}). "
+                "Use a different name or department, or update the existing record."
+            ),
+        )
+
     person = Person(
         name=payload.name, email=payload.email, department=payload.department
     )
@@ -114,6 +134,7 @@ async def create_person(
         },
     )
     return PersonRead.model_validate(person)
+
 
 
 @router.get("/persons", response_model=PersonListResponse)
@@ -225,6 +246,7 @@ async def update_person(
 @router.delete("/persons/{person_id}")
 async def delete_person(
     person_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_admin: User = Depends(require_admin),
 ) -> dict[str, str]:
@@ -256,6 +278,11 @@ async def delete_person(
         entity_id=person.id,
         metadata={"email": person.email, "department": person.department},
     )
+    # Remove from live FAISS index immediately so they're no longer recognised.
+    try:
+        await request.app.state.face_service.remove_person_from_index(person_id)
+    except Exception as exc:
+        logger.warning("Could not remove person %s from index: %s", person_id, exc)
     return {"message": "Person deactivated"}
 
 
@@ -368,14 +395,13 @@ async def upload_person_images(
         metadata={"filename_count": len(files), "results": results},
     )
 
-    # Optional auto-training.
+    # Auto-training: incrementally refresh only this person's embeddings,
+    # which is faster and avoids affecting other people's recognition.
     try:
-        from app.config import get_settings
-
         if get_settings().auto_train_on_upload:
-            await request.app.state.face_service.rebuild_index(db)
+            await request.app.state.face_service.add_person_to_index(person_id, db)
     except Exception as exc:
-        logger.warning("Auto-training skipped: %s", exc)
+        logger.warning("Incremental auto-training skipped: %s", exc)
 
     return {"person_id": person_id, "results": results}
 
@@ -464,8 +490,16 @@ async def delete_image(
     )
 
     try:
-        await request.app.state.face_service.rebuild_index(db)
+        # Incremental update: re-add only this person's remaining images.
+        # If no valid images remain, remove them from the index entirely.
+        added = await request.app.state.face_service.add_person_to_index(
+            image.person_id, db
+        )
+        if not added:
+            await request.app.state.face_service.remove_person_from_index(
+                image.person_id
+            )
     except Exception as exc:
-        logger.warning("Retraining after delete failed: %s", exc)
+        logger.warning("Incremental index update after image delete failed: %s", exc)
 
     return {"message": "Image deleted"}

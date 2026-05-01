@@ -111,7 +111,7 @@ export const auditApi = {
 };
 
 export const videoApi = {
-  upload: (formData) => api.post("/api/video/upload", formData),
+  upload: (formData, options = {}) => api.post("/api/video/upload", formData, options),
 };
 
 export const undetectedFaceApi = {

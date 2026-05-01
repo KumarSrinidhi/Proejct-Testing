@@ -163,7 +163,9 @@ export default function LiveRecognitionPage() {
         reconnectTimerRef.current = setTimeout(() => {
           if (!manualStopRef.current && activeStreamConfigRef.current) {
             connectSocket(activeStreamConfigRef.current);
-            if (sourceTypeRef.current === "webcam") startBrowserFrameStream();
+            if (activeStreamConfigRef.current.source_type === "browser_webcam") {
+              startBrowserFrameStream();
+            }
           }
         }, delayMs);
       },

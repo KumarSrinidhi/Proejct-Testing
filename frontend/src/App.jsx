@@ -1,6 +1,7 @@
 import { Component, createContext, useContext, useEffect, useState } from "react";
 import { NavLink, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+import { useOffline } from "./hooks/useOffline";
 import AttendancePage from "./pages/AttendancePage";
 import UndetectedFacesPage from "./pages/UndetectedFacesPage";
 import Dashboard from "./pages/Dashboard";
@@ -97,6 +98,7 @@ function ProtectedRoute({ allowedRoles }) {
 function Layout() {
   const { role, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { isOffline } = useOffline();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const links = [
@@ -127,8 +129,20 @@ function Layout() {
 
   return (
     <div className="app-shell">
+      {/* ── Offline Banner ── */}
+      {isOffline && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999,
+          background: "#f59e0b", color: "#1c1917", padding: "6px 16px",
+          fontSize: "0.8rem", fontWeight: 600, textAlign: "center",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        }}>
+          <span style={{ fontSize: "1em" }}>⚠️</span>
+          You are offline — showing cached data. Some features may be unavailable.
+        </div>
+      )}
       {/* ── Sidebar ── */}
-      <aside className="sidebar" style={{ width: sidebarOpen ? "var(--sidebar-width)" : 0, minWidth: sidebarOpen ? "var(--sidebar-width)" : 0, overflow: "hidden", transition: "width 0.2s ease, min-width 0.2s ease" }}>
+      <aside className="sidebar" style={{ width: sidebarOpen ? "var(--sidebar-width)" : 0, minWidth: sidebarOpen ? "var(--sidebar-width)" : 0, overflow: "hidden", transition: "width 0.2s ease, min-width 0.2s ease", marginTop: isOffline ? 32 : 0 }}>
         {/* Logo */}
         <div className="sidebar-logo">
           <div className="sidebar-logo-icon">

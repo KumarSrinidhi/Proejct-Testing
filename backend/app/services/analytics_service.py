@@ -1,45 +1,55 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from sqlalchemy import Float, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.attendance import Attendance
 from app.models.person import Person
+from app.utils.ist_utils import now_ist, ist_day_start_utc
+
+# IST offset in minutes (UTC+05:30 = 330 minutes).
+# SQLite stores timestamps as UTC text strings.  Passing "+330 minutes" as a
+# modifier to strftime() shifts each timestamp into IST before formatting.
+_IST_OFFSET = "+330 minutes"
 
 
 class AnalyticsService:
     async def get_heatmap_data(self, db: AsyncSession) -> dict[str, object]:
+        # Group by IST hour so the heatmap reflects India office hours, not UTC.
         hourly_result = await db.execute(
             select(
-                func.strftime("%H", Attendance.timestamp).label("hour"),
+                func.strftime("%H", Attendance.timestamp, _IST_OFFSET).label("hour"),
                 func.count(Attendance.id),
             ).group_by("hour")
         )
+        # Group by IST weekday (SQLite %w: 0=Sunday … 6=Saturday).
         daily_result = await db.execute(
             select(
-                func.strftime("%w", Attendance.timestamp).label("weekday"),
+                func.strftime("%w", Attendance.timestamp, _IST_OFFSET).label("weekday"),
                 func.count(Attendance.id),
             ).group_by("weekday")
         )
 
-        today = datetime.now(timezone.utc).date()
-        week_start = datetime.combine(today - timedelta(days=6), datetime.min.time())
-        month_start = datetime.combine(today - timedelta(days=28), datetime.min.time())
+        # Use IST "today" so window boundaries align with the Indian calendar.
+        today_ist = now_ist()
+        week_start_utc = ist_day_start_utc(today_ist - timedelta(days=6))
+        month_start_utc = ist_day_start_utc(today_ist - timedelta(days=28))
 
         week_result = await db.execute(
             select(
-                func.date(Attendance.timestamp).label("day"), func.count(Attendance.id)
+                func.date(Attendance.timestamp, _IST_OFFSET).label("day"),
+                func.count(Attendance.id),
             )
-            .where(Attendance.timestamp >= week_start)
+            .where(Attendance.timestamp >= week_start_utc)
             .group_by("day")
             .order_by("day")
         )
 
         month_result = await db.execute(
             select(
-                func.strftime("%Y-%W", Attendance.timestamp).label("week"),
+                func.strftime("%Y-%W", Attendance.timestamp, _IST_OFFSET).label("week"),
                 func.count(Attendance.id),
             )
-            .where(Attendance.timestamp >= month_start)
+            .where(Attendance.timestamp >= month_start_utc)
             .group_by("week")
             .order_by("week")
         )

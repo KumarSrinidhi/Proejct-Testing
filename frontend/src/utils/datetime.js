@@ -18,12 +18,28 @@ const dateFormatter = new Intl.DateTimeFormat("en-IN", {
   day: "2-digit",
 });
 
+function parseDateValue(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+
+  if (typeof value === "string") {
+    const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(value);
+    // If it's a naive ISO string, treat it as UTC to avoid local-time drift.
+    const normalizedValue = hasTimezone ? value : `${value}Z`;
+    return new Date(normalizedValue);
+  }
+
+  return new Date(value);
+}
+
 export function formatDateTimeIst(value) {
-  if (!value) return "—";
-  return dateTimeFormatter.format(new Date(value));
+  const parsed = parseDateValue(value);
+  if (!parsed || Number.isNaN(parsed.getTime())) return "—";
+  return dateTimeFormatter.format(parsed);
 }
 
 export function formatDateIst(value) {
-  if (!value) return "—";
-  return dateFormatter.format(new Date(value));
+  const parsed = parseDateValue(value);
+  if (!parsed || Number.isNaN(parsed.getTime())) return "—";
+  return dateFormatter.format(parsed);
 }

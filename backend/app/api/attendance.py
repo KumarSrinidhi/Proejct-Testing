@@ -27,6 +27,12 @@ router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 analytics_service = AnalyticsService()
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 @router.get("", response_model=AttendanceListResponse)
 async def list_attendance(
     page: int = Query(default=1, ge=1),
@@ -39,9 +45,12 @@ async def list_attendance(
     db: AsyncSession = Depends(get_db),
     _: object = Depends(require_teacher_or_admin),
 ) -> AttendanceListResponse:
+    # BUG-06 fix: always exclude soft-deleted attendance records from admin results.
+    base_filter = [Attendance.is_active.is_(True)]
     query = (
         select(Attendance, Person.name, Person.department)
         .join(Person, Person.id == Attendance.person_id)
+        .where(and_(*base_filter))
         .order_by(Attendance.timestamp.desc())
     )
 
@@ -63,7 +72,7 @@ async def list_attendance(
 
     count_query = select(func.count(Attendance.id)).join(
         Person, Person.id == Attendance.person_id
-    )
+    ).where(and_(*base_filter))
     if filters:
         count_query = count_query.where(and_(*filters))
     total, rows = await paginate_select(
@@ -81,7 +90,7 @@ async def list_attendance(
                 person_id=attendance.person_id,
                 person_name=name,
                 department=dept,
-                timestamp=attendance.timestamp,
+                timestamp=_ensure_utc(attendance.timestamp),
                 confidence_score=attendance.confidence_score,
                 cropped_face_path=attendance.cropped_face_path,
             )
@@ -152,7 +161,7 @@ async def export_csv(
                 attendance.person_id,
                 name,
                 dept,
-                attendance.timestamp.isoformat(),
+                _ensure_utc(attendance.timestamp).isoformat(),
                 attendance.confidence_score,
             ]
         )
@@ -225,7 +234,7 @@ async def update_attendance(
         person_id=attendance.person_id,
         person_name=person.name,
         department=person.department,
-        timestamp=attendance.timestamp,
+        timestamp=_ensure_utc(attendance.timestamp),
         confidence_score=attendance.confidence_score,
         cropped_face_path=attendance.cropped_face_path,
     )
@@ -268,10 +277,11 @@ async def list_my_attendance(
     current_user: User = Depends(get_current_user),
 ) -> AttendanceListResponse:
     identity_email = current_user.email or current_user.username
+    # BUG-05 fix: exclude soft-deleted attendance records from student's own view.
     query = (
         select(Attendance, Person.name, Person.department)
         .join(Person, Person.id == Attendance.person_id)
-        .where(Person.email == identity_email)
+        .where(Person.email == identity_email, Attendance.is_active.is_(True))
         .order_by(Attendance.timestamp.desc())
     )
     total, rows = await paginate_select(
@@ -279,7 +289,7 @@ async def list_my_attendance(
         query,
         select(func.count(Attendance.id))
         .join(Person, Person.id == Attendance.person_id)
-        .where(Person.email == identity_email),
+        .where(Person.email == identity_email, Attendance.is_active.is_(True)),
         page=page,
         page_size=page_size,
         use_scalars=False,
@@ -291,7 +301,7 @@ async def list_my_attendance(
                 person_id=attendance.person_id,
                 person_name=name,
                 department=dept,
-                timestamp=attendance.timestamp,
+                timestamp=_ensure_utc(attendance.timestamp),
                 confidence_score=attendance.confidence_score,
                 cropped_face_path=attendance.cropped_face_path,
             )

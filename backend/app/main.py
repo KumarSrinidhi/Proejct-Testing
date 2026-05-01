@@ -18,6 +18,7 @@ from app.api import (
     audit_logs,
     auth,
     persons,
+    reports,
     training,
     undetected_faces,
     users,
@@ -364,6 +365,7 @@ app.include_router(attendance.router)
 app.include_router(users.router)
 app.include_router(undetected_faces.router)
 app.include_router(video.router)
+app.include_router(reports.router)
 app.include_router(ws_router)
 
 

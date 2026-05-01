@@ -15,14 +15,19 @@ from fastapi.concurrency import run_in_threadpool
 from app.api.deps import authenticate_access_token
 from app.config import get_settings
 from app.database import SessionLocal
+from app.models.user import ROLE_ADMIN, ROLE_TEACHER
 from app.services.video_ingestion import VideoIngestionService
 from app.utils.file_storage import VIDEO_UPLOADS_ROOT
 from app.utils.image_utils import crop_face
+from app.utils.audit import log_audit_event
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
+
+# Roles allowed to open the live recognition stream
+_WEBCAM_ALLOWED_ROLES = {ROLE_ADMIN, ROLE_TEACHER}
 
 
 def _decode_data_url_image(data_url: str) -> np.ndarray | None:
@@ -122,10 +127,34 @@ async def process_stream_socket(websocket: WebSocket) -> None:
 
     async with SessionLocal() as auth_db:
         try:
-            await authenticate_access_token(token, auth_db)
+            user = await authenticate_access_token(token, auth_db)
         except Exception:
             await websocket.close(code=1008)
             return
+
+        # Role gate: only admin and teacher may access the live webcam feed.
+        # Students are explicitly excluded for privacy reasons.
+        user_role = user.role or (ROLE_ADMIN if user.is_admin else "")
+        if user_role not in _WEBCAM_ALLOWED_ROLES:
+            logger.warning(
+                "WebSocket access denied role=%s username=%s",
+                user_role,
+                user.username,
+            )
+            try:
+                await log_audit_event(
+                    auth_db,
+                    actor=user,
+                    action="webcam_access_denied",
+                    entity_type="websocket",
+                    entity_id=None,
+                    metadata={"role": user_role, "reason": "insufficient_role"},
+                )
+            except Exception:
+                pass
+            await websocket.close(code=1008)
+            return
+
 
     await websocket.accept()
     try:

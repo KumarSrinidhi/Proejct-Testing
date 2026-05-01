@@ -50,7 +50,7 @@ export function AuthProvider({ children }) {
   };
 
   const value = useMemo(() => {
-    const role = user?.role || "student";
+    const role = user?.role ?? null;
     return {
       user,
       role,

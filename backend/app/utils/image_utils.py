@@ -28,5 +28,10 @@ def bytes_to_cv2_image(payload: bytes) -> np.ndarray | None:
 
 
 def crop_face(frame: np.ndarray, bbox: Any) -> np.ndarray:
+    h, w = frame.shape[:2]
     x1, y1, x2, y2 = [max(0, int(v)) for v in bbox]
+    x1 = min(x1, w)
+    y1 = min(y1, h)
+    x2 = min(x2, w)
+    y2 = min(y2, h)
     return frame[y1:y2, x1:x2]
