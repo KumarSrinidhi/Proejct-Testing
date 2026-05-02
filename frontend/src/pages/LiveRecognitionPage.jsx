@@ -68,9 +68,9 @@ export default function LiveRecognitionPage() {
       if (manualStopRef.current) return;
       if (lastServerFrameAtRef.current > 0) return;
       setConnectionState("error");
-      setStatusMessage("No frames received from server. Check the source and backend access.");
+      setStatusMessage("No frames received from server. Check the RTSP URL, credentials, and backend network access.");
       socketRef.current?.close();
-    }, 12000);
+    }, 20000); // 20s — allows time for RTSP stream to open (frame_process_interval=1s)
   };
   const stopBrowserFrameStream = () => {
     if (frameIntervalRef.current) { clearInterval(frameIntervalRef.current); frameIntervalRef.current = null; }
@@ -103,23 +103,26 @@ export default function LiveRecognitionPage() {
   const stopLocalPreview = () => {
     if (webcamStreamRef.current) { webcamStreamRef.current.getTracks().forEach((t) => t.stop()); webcamStreamRef.current = null; }
     if (videoRef.current) videoRef.current.srcObject = null;
-    setPreviewMode("idle");
+    // Do NOT reset previewMode here — callers manage mode transitions to avoid idle flash
   };
-  const startLocalPreview = async () => {
-    console.log("[Live] startLocalPreview called, sourceType:", sourceType, "previewMode before:", previewMode);
-    stopLocalPreview();
-    if (sourceType === "webcam") {
+  const startLocalPreview = async (overrideSourceType) => {
+    const effectiveSourceType = overrideSourceType ?? sourceType;
+    console.log("[Live] startLocalPreview called, effectiveSourceType:", effectiveSourceType);
+    // Stop any active webcam tracks before switching
+    if (webcamStreamRef.current) { webcamStreamRef.current.getTracks().forEach((t) => t.stop()); webcamStreamRef.current = null; }
+    if (videoRef.current) videoRef.current.srcObject = null;
+    if (effectiveSourceType === "webcam") {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         webcamStreamRef.current = stream;
         if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
         setPreviewMode("webcam");
         console.log("[Live] Set previewMode to webcam");
-      } catch { setStatusMessage("Failed to open webcam preview."); }
+      } catch { setStatusMessage("Failed to open webcam preview."); setPreviewMode("idle"); }
       return;
     }
-    if (sourceType === "file" && previewUrl) { setPreviewMode("file"); console.log("[Live] Set previewMode to file"); return; }
-    if (sourceType === "rtsp") { setPreviewMode("rtsp"); console.log("[Live] Set previewMode to rtsp"); return; }
+    if (effectiveSourceType === "file" && previewUrl) { setPreviewMode("file"); console.log("[Live] Set previewMode to file"); return; }
+    if (effectiveSourceType === "rtsp") { setPreviewMode("rtsp"); console.log("[Live] Set previewMode to rtsp"); return; }
     setPreviewMode("idle");
     console.log("[Live] Set previewMode to idle");
   };
@@ -289,12 +292,17 @@ export default function LiveRecognitionPage() {
     if (sourceType === "file" && !normalizedSourcePath) { setStatusMessage("Upload a video or enter a valid server file path."); return; }
     if (sourceType === "rtsp" && !normalizedSourcePath) { setStatusMessage("Enter a valid RTSP URL."); return; }
     if (sourceType === "rtsp" && !/^rtsps?:\/\//i.test(normalizedSourcePath)) { setStatusMessage("RTSP URL must start with rtsp:// or rtsps://."); return; }
+    // Set previewMode BEFORE startLocalPreview so it is the authoritative value
+    // RTSP is set here; webcam/file are set inside startLocalPreview
     if (sourceType === "rtsp") {
       setPreviewMode("rtsp");
       setConnectionState("connecting");
       setStatusMessage("Opening stream on server...");
+    } else if (sourceType !== "webcam" && sourceType !== "file") {
+      setPreviewMode("idle");
     }
-    await startLocalPreview();
+    // Pass sourceType explicitly so startLocalPreview uses the latest value, not stale closure
+    await startLocalPreview(sourceType);
     manualStopRef.current = false;
     fatalErrorRef.current = false;
     serverStreamOpenedRef.current = false;
@@ -326,6 +334,7 @@ export default function LiveRecognitionPage() {
     socketRef.current = null;
     activeStreamConfigRef.current = null;
     stopLocalPreview();
+    setPreviewMode("idle"); // Reset to idle only on explicit stop
     clearNoFrameTimer();
     setServerFrame("");
     setLatestFaces([]);
@@ -530,11 +539,12 @@ export default function LiveRecognitionPage() {
             />
           )}
 
-          {previewMode === "idle" && sourceType !== "rtsp" && (
+          {previewMode === "idle" && connectionState === "idle" && sourceType !== "rtsp" && (
             <div style={{
               position: "absolute", inset: 0,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
               gap: "0.75rem",
+              pointerEvents: "none",
             }}>
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "rgba(255,255,255,0.2)" }}>
                 <polygon points="23 7 16 12 23 17 23 7"/>
@@ -546,22 +556,36 @@ export default function LiveRecognitionPage() {
             </div>
           )}
 
-          {sourceType === "rtsp" && !serverFrame && (
+          {(previewMode === "rtsp" || (sourceType === "rtsp" && connectionState !== "idle")) && !serverFrame && (
             <div style={{
               position: "absolute", inset: 0,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
               gap: "0.75rem",
               background: "linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(59,130,246,0.1) 100%)",
+              pointerEvents: "none",
             }}>
               <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--success-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--success)", animation: "pulse 2s infinite" }} />
+                <div style={{ width: 20, height: 20, borderRadius: "50%", background: connectionState === "error" ? "var(--danger, #f43f5e)" : "var(--success)", animation: connectionState === "error" ? "none" : "pulse 2s infinite" }} />
               </div>
               <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.875rem", fontWeight: 500 }}>
-                {connectionState === "idle" ? "RTSP Stream Ready" : connectionState === "reconnecting" ? "Reconnecting RTSP Stream" : connectionState === "error" ? "RTSP Stream Error" : "Opening RTSP Stream"}
+                {connectionState === "idle" ? "RTSP Stream Ready" : connectionState === "reconnecting" ? "Reconnecting RTSP Stream…" : connectionState === "error" ? "RTSP Stream Error" : "Opening RTSP Stream…"}
               </p>
               <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.75rem" }}>
-                {connectionState === "idle" ? "Enter RTSP URL and click Start" : "Waiting for the first server frame"}
+                {connectionState === "idle" ? "Enter RTSP URL and click Start" : connectionState === "connecting" ? "Connecting to server…" : "Waiting for the first server frame…"}
               </p>
+            </div>
+          )}
+          {sourceType === "rtsp" && connectionState === "idle" && previewMode === "idle" && (
+            <div style={{
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: "0.75rem",
+              pointerEvents: "none",
+            }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "rgba(255,255,255,0.2)" }}>
+                <path d="M15 10l4.553-2.069A1 1 0 0121 8.845v6.31a1 1 0 01-1.447.914L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+              </svg>
+              <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.875rem" }}>Enter RTSP URL and click Start</p>
             </div>
           )}
 

@@ -292,8 +292,8 @@ sudo apt-get update && sudo apt-get install -y libglib2.0-0 libgl1
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/KumarSrinidhi/face-recognition-attendance.git
-cd face-recognition-attendance
+git clone https://github.com/KumarSrinidhi/Proejct-Testing.git
+cd Proejct-Testing
 ```
 
 ### 2. Backend setup
