@@ -37,11 +37,15 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        await axios.post(
+        const refreshResponse = await axios.post(
           `${apiBaseURL}/api/auth/refresh`,
           {},
           { withCredentials: true }
         );
+        const newToken = refreshResponse?.data?.access_token;
+        if (newToken) {
+          localStorage.setItem("access_token", newToken);
+        }
         return api(originalRequest);
       } catch (refreshError) {
         // Refresh failed, redirect to login only if we are not already there.

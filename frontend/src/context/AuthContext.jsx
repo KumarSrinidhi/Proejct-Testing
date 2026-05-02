@@ -47,6 +47,7 @@ export function AuthProvider({ children }) {
     }
     setUser(null);
     sessionStorage.removeItem("is_authed");
+    localStorage.removeItem("access_token");
   };
 
   const value = useMemo(() => {

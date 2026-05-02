@@ -30,6 +30,7 @@ export default function LiveRecognitionPage() {
   const [previewMode, setPreviewMode] = useState("idle");
   const [latestFaces, setLatestFaces] = useState([]);
   const [frameSize, setFrameSize] = useState({ width: 1, height: 1 });
+  const [serverFrame, setServerFrame] = useState("");
   const [currentFps, setCurrentFps] = useState(0);
   const [processingMs, setProcessingMs] = useState(0);
   const [connectionState, setConnectionState] = useState("idle");
@@ -43,14 +44,33 @@ export default function LiveRecognitionPage() {
   const reconnectTimerRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
   const manualStopRef = useRef(false);
+  const fatalErrorRef = useRef(false);
+  const serverStreamOpenedRef = useRef(false);
+  const noFrameTimerRef = useRef(null);
+  const lastServerFrameAtRef = useRef(0);
   const activeStreamConfigRef = useRef(null);
   const sourceTypeRef = useRef(sourceType);
   const uploadControllerRef = useRef(null);
 
   useEffect(() => { sourceTypeRef.current = sourceType; }, [sourceType]);
+  useEffect(() => { setServerFrame(""); }, [sourceType, sourcePath]);
 
   const clearReconnectTimer = () => {
     if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+  };
+  const clearNoFrameTimer = () => {
+    if (noFrameTimerRef.current) { clearTimeout(noFrameTimerRef.current); noFrameTimerRef.current = null; }
+  };
+  const startNoFrameTimer = () => {
+    clearNoFrameTimer();
+    lastServerFrameAtRef.current = 0;
+    noFrameTimerRef.current = setTimeout(() => {
+      if (manualStopRef.current) return;
+      if (lastServerFrameAtRef.current > 0) return;
+      setConnectionState("error");
+      setStatusMessage("No frames received from server. Check the source and backend access.");
+      socketRef.current?.close();
+    }, 12000);
   };
   const stopBrowserFrameStream = () => {
     if (frameIntervalRef.current) { clearInterval(frameIntervalRef.current); frameIntervalRef.current = null; }
@@ -108,6 +128,7 @@ export default function LiveRecognitionPage() {
     return () => {
       manualStopRef.current = true;
       clearReconnectTimer();
+      clearNoFrameTimer();
       stopBrowserFrameStream();
       stopLocalPreview();
       if (previewObjectUrlRef.current) { URL.revokeObjectURL(previewObjectUrlRef.current); previewObjectUrlRef.current = null; }
@@ -132,6 +153,25 @@ export default function LiveRecognitionPage() {
     const socket = createRecognitionSocket(
       streamConfig,
       (payload) => {
+        if (payload.type === "stream_status") {
+          if (payload.status === "opening") {
+            setConnectionState("connecting");
+            setStatusMessage("Opening stream on server...");
+          } else if (payload.status === "connected") {
+            serverStreamOpenedRef.current = true;
+            setConnectionState("connected");
+            setStatusMessage(payload.reconnect_attempt ? "RTSP stream reconnected." : "Stream connected.");
+          } else if (payload.status === "reconnecting") {
+            setConnectionState("reconnecting");
+            setStatusMessage(`RTSP stream interrupted. Reconnecting in ${payload.delay_seconds || 1}s...`);
+          } else if (payload.status === "ended") {
+            setConnectionState("idle");
+            setStatusMessage("Stream completed.");
+          } else if (payload.status === "stopped") {
+            setConnectionState("idle");
+          }
+          return;
+        }
         if (payload.type === "recognition") {
           const now = performance.now();
           if (lastRecognitionTsRef.current > 0) {
@@ -139,6 +179,7 @@ export default function LiveRecognitionPage() {
             if (delta > 0) setCurrentFps(Number((1000 / delta).toFixed(2)));
           }
           lastRecognitionTsRef.current = now;
+          serverStreamOpenedRef.current = true;
           const faces = Array.isArray(payload.faces) ? payload.faces : [];
           if (faces.length > 0) {
             const faceEvents = faces.map((face) => ({ ...payload, person_id: face.person_id, name: face.name, confidence: face.confidence, attendance_marked: face.attendance_marked, message: face.message, bbox: face.bbox }));
@@ -148,16 +189,42 @@ export default function LiveRecognitionPage() {
           }
           setLatestFaces(faces);
           setProcessingMs(Number(payload.processing_ms || 0));
+          if (payload.frame_image) {
+            setServerFrame(payload.frame_image);
+            lastServerFrameAtRef.current = Date.now();
+            clearNoFrameTimer();
+          }
           if (payload.frame_width && payload.frame_height) setFrameSize({ width: payload.frame_width, height: payload.frame_height });
           return;
         }
-        if (payload.type === "error") { setStatusMessage(payload.message || "Stream processing failed."); return; }
-        if (payload.type === "done") setStatusMessage("Stream completed.");
+        if (payload.type === "error") {
+          setStatusMessage(payload.message || "Stream processing failed.");
+          if (payload.fatal) {
+            fatalErrorRef.current = true;
+            stopBrowserFrameStream();
+            setConnectionState("error");
+            socketRef.current?.close();
+          }
+          return;
+        }
+        if (payload.type === "done") { setConnectionState("idle"); setStatusMessage("Stream completed."); }
       },
-      () => {
+      (event) => {
+        clearNoFrameTimer();
         stopBrowserFrameStream();
         socketRef.current = null;
+        if (event?.code === 1008) {
+          setConnectionState("error");
+          setStatusMessage("WebSocket closed: unauthorized. Log in as admin/teacher.");
+          return;
+        }
+        if (fatalErrorRef.current) { setConnectionState("error"); return; }
         if (manualStopRef.current) { setConnectionState("idle"); return; }
+        if (activeStreamConfigRef.current?.source_type !== "browser_webcam" && !serverStreamOpenedRef.current) {
+          setConnectionState("error");
+          setStatusMessage("Stream closed before opening. Check the RTSP URL and streamer.");
+          return;
+        }
         const nextAttempt = reconnectAttemptsRef.current + 1;
         reconnectAttemptsRef.current = nextAttempt;
         if (nextAttempt > 10) { setConnectionState("error"); setStatusMessage("Connection lost. Retry limit reached."); return; }
@@ -175,11 +242,20 @@ export default function LiveRecognitionPage() {
         }, delayMs);
       },
       () => { 
+        clearNoFrameTimer();
         const isRtsp = sourceTypeRef.current === "rtsp";
         setConnectionState("error"); 
         setStatusMessage(isRtsp ? "Failed to connect to RTSP stream. Check URL and network." : "WebSocket connection failed."); 
       },
-      () => { reconnectAttemptsRef.current = 0; setConnectionState("connected"); }
+      () => {
+        reconnectAttemptsRef.current = 0;
+        if (streamConfig.source_type === "browser_webcam") {
+          setConnectionState("connected");
+        } else {
+          setStatusMessage("Opening stream on server...");
+          startNoFrameTimer();
+        }
+      }
     );
     socketRef.current = socket;
   };
@@ -209,16 +285,27 @@ export default function LiveRecognitionPage() {
 
   const start = async () => {
     console.log("[Live] Start called, sourceType:", sourceType, "sourcePath:", sourcePath);
-    if (sourceType === "file" && !sourcePath) { setStatusMessage("Upload a video or enter a valid server file path."); return; }
-    if (sourceType === "rtsp" && !sourcePath) { setStatusMessage("Enter a valid RTSP URL."); return; }
+    const normalizedSourcePath = typeof sourcePath === "string" ? sourcePath.trim() : sourcePath;
+    if (sourceType === "file" && !normalizedSourcePath) { setStatusMessage("Upload a video or enter a valid server file path."); return; }
+    if (sourceType === "rtsp" && !normalizedSourcePath) { setStatusMessage("Enter a valid RTSP URL."); return; }
+    if (sourceType === "rtsp" && !/^rtsps?:\/\//i.test(normalizedSourcePath)) { setStatusMessage("RTSP URL must start with rtsp:// or rtsps://."); return; }
+    if (sourceType === "rtsp") {
+      setPreviewMode("rtsp");
+      setConnectionState("connecting");
+      setStatusMessage("Opening stream on server...");
+    }
     await startLocalPreview();
     manualStopRef.current = false;
+    fatalErrorRef.current = false;
+    serverStreamOpenedRef.current = false;
     clearReconnectTimer();
+    clearNoFrameTimer();
     reconnectAttemptsRef.current = 0;
     stopBrowserFrameStream();
+    setServerFrame("");
     if (socketRef.current) socketRef.current.close();
     const wsSourceType = sourceType === "webcam" ? "browser_webcam" : sourceType;
-    const streamConfig = { source_type: wsSourceType, source_path: sourcePath || null };
+    const streamConfig = { source_type: wsSourceType, source_path: normalizedSourcePath || null };
     console.log("[Live] Connecting with config:", streamConfig);
     activeStreamConfigRef.current = streamConfig;
     connectSocket(streamConfig);
@@ -228,6 +315,8 @@ export default function LiveRecognitionPage() {
 
   const stop = () => {
     manualStopRef.current = true;
+    fatalErrorRef.current = false;
+    serverStreamOpenedRef.current = false;
     clearReconnectTimer();
     stopBrowserFrameStream();
     if (socketRef.current?.readyState === WebSocket.OPEN && sourceType === "webcam") {
@@ -237,6 +326,8 @@ export default function LiveRecognitionPage() {
     socketRef.current = null;
     activeStreamConfigRef.current = null;
     stopLocalPreview();
+    clearNoFrameTimer();
+    setServerFrame("");
     setLatestFaces([]);
     setCurrentFps(0);
     setProcessingMs(0);
@@ -416,7 +507,7 @@ export default function LiveRecognitionPage() {
             ref={videoRef}
             style={{
               width: "100%", height: "100%", objectFit: "contain",
-              display: previewMode === "idle" || previewMode === "rtsp" ? "none" : "block",
+              display: previewMode === "idle" || previewMode === "rtsp" || serverFrame ? "none" : "block",
             }}
             autoPlay
             muted
@@ -426,7 +517,20 @@ export default function LiveRecognitionPage() {
             src={previewMode === "file" ? previewUrl : undefined}
           />
 
-          {previewMode === "idle" && (
+          {serverFrame && (
+            <img
+              alt=""
+              src={serverFrame}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                display: "block",
+              }}
+            />
+          )}
+
+          {previewMode === "idle" && sourceType !== "rtsp" && (
             <div style={{
               position: "absolute", inset: 0,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -442,7 +546,7 @@ export default function LiveRecognitionPage() {
             </div>
           )}
 
-          {previewMode === "rtsp" && connectionState !== "idle" && (
+          {sourceType === "rtsp" && !serverFrame && (
             <div style={{
               position: "absolute", inset: 0,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -453,25 +557,10 @@ export default function LiveRecognitionPage() {
                 <div style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--success)", animation: "pulse 2s infinite" }} />
               </div>
               <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.875rem", fontWeight: 500 }}>
-                RTSP Stream Connected
+                {connectionState === "idle" ? "RTSP Stream Ready" : connectionState === "reconnecting" ? "Reconnecting RTSP Stream" : connectionState === "error" ? "RTSP Stream Error" : "Opening RTSP Stream"}
               </p>
               <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.75rem" }}>
-                Processing on server - frames appear below
-              </p>
-            </div>
-          )}
-
-          {previewMode === "rtsp" && connectionState === "idle" && (
-            <div style={{
-              position: "absolute", inset: 0,
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: "0.75rem",
-            }}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "rgba(255,255,255,0.2)" }}>
-                <path d="M2 12h2l3-9 4 18 4-9 3 9h6" />
-              </svg>
-              <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.875rem" }}>
-                Enter RTSP URL and click Start
+                {connectionState === "idle" ? "Enter RTSP URL and click Start" : "Waiting for the first server frame"}
               </p>
             </div>
           )}

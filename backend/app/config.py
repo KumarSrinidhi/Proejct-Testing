@@ -51,6 +51,18 @@ class Settings(BaseSettings):
     # Video settings
     video_source_type: str = "file"
     video_source_path: str = ""
+    rtsp_open_timeout_seconds: float = 8.0
+    rtsp_read_timeout_seconds: float = 8.0
+    rtsp_read_failure_threshold: int = 5
+    rtsp_reconnect_attempts: int = 5
+    rtsp_reconnect_base_delay_seconds: float = 1.0
+    rtsp_reconnect_max_delay_seconds: float = 10.0
+    rtsp_capture_buffer_size: int = 1
+    rtsp_ffmpeg_capture_options: str = (
+        "rtsp_transport;tcp|stimeout;8000000|max_delay;500000"
+    )
+    stream_preview_width: int = 960
+    stream_preview_jpeg_quality: int = 70
     auto_train_on_upload: bool = False
 
     # Rate limiting

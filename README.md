@@ -502,6 +502,13 @@ Full reference for `backend/.env`:
 | `FACE_DETECTION_THRESHOLD` | Minimum detector confidence to accept a face | `0.35` |
 | `ATTENDANCE_COOLDOWN_SECONDS` | Minimum seconds between attendance marks per person | `300` |
 | `FRAME_PROCESS_INTERVAL` | Process every Nth frame from video stream | `1.0` |
+| `RTSP_OPEN_TIMEOUT_SECONDS` | Seconds to wait while opening an RTSP camera | `8` |
+| `RTSP_READ_TIMEOUT_SECONDS` | Seconds to wait for each RTSP frame read | `8` |
+| `RTSP_READ_FAILURE_THRESHOLD` | Failed RTSP reads before reconnecting | `5` |
+| `RTSP_RECONNECT_ATTEMPTS` | Reconnect attempts before failing the stream | `5` |
+| `RTSP_FFMPEG_CAPTURE_OPTIONS` | OpenCV FFmpeg options for RTSP transport/timeouts | `rtsp_transport;tcp|stimeout;8000000|max_delay;500000` |
+| `STREAM_PREVIEW_WIDTH` | Max width of server-sent preview frames | `960` |
+| `STREAM_PREVIEW_JPEG_QUALITY` | JPEG quality for server-sent preview frames | `70` |
 | `INSIGHTFACE_MODEL` | InsightFace model pack name | `buffalo_l` |
 | `VIDEO_SOURCE_TYPE` | `webcam`, `file`, or `rtsp` | `file` |
 | `VIDEO_SOURCE_PATH` | Path/URL for `file` or `rtsp` source | — |

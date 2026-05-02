@@ -43,7 +43,11 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await authApi.login(username, password);
+      const response = await authApi.login(username, password);
+      const token = response?.data?.access_token;
+      if (token) {
+        localStorage.setItem("access_token", token);
+      }
       await refreshUser();
       window.location.href = "/";
     } catch (err) {

@@ -28,6 +28,9 @@ settings = get_settings()
 
 # Roles allowed to open the live recognition stream
 _WEBCAM_ALLOWED_ROLES = {ROLE_ADMIN, ROLE_TEACHER}
+_SERVER_SOURCE_TYPES = {"file", "rtsp"}
+_CLIENT_SOURCE_TYPES = {"browser_webcam"}
+_ALLOWED_SOURCE_TYPES = _SERVER_SOURCE_TYPES | _CLIENT_SOURCE_TYPES
 
 
 def _decode_data_url_image(data_url: str) -> np.ndarray | None:
@@ -42,6 +45,45 @@ def _decode_data_url_image(data_url: str) -> np.ndarray | None:
         return frame
     except (ValueError, binascii.Error):
         return None
+
+
+def _encode_preview_frame(frame: np.ndarray) -> str | None:
+    if frame is None or frame.size == 0:
+        return None
+
+    preview = frame
+    if preview.ndim == 2:
+        preview = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
+    elif preview.ndim == 3 and preview.shape[2] == 4:
+        preview = cv2.cvtColor(preview, cv2.COLOR_BGRA2BGR)
+    elif preview.ndim != 3:
+        return None
+
+    if preview.dtype != np.uint8:
+        preview = cv2.normalize(preview, None, 0, 255, cv2.NORM_MINMAX)
+        preview = preview.astype(np.uint8)
+
+    preview = np.ascontiguousarray(preview)
+
+    height, width = preview.shape[:2]
+    max_width = max(1, settings.stream_preview_width)
+    if width > max_width:
+        preview_height = max(1, round(height * (max_width / width)))
+        preview = cv2.resize(
+            preview,
+            (max_width, preview_height),
+            interpolation=cv2.INTER_AREA,
+        )
+
+    quality = min(95, max(20, int(settings.stream_preview_jpeg_quality)))
+    ok, encoded = cv2.imencode(
+        ".jpg",
+        preview,
+        [int(cv2.IMWRITE_JPEG_QUALITY), quality],
+    )
+    if not ok:
+        return None
+    return "data:image/jpeg;base64," + base64.b64encode(encoded).decode("ascii")
 
 
 async def _process_frame(
@@ -115,6 +157,11 @@ async def _process_frame(
             "processing_ms": round((perf_counter() - started) * 1000, 2),
         }
 
+        if source_type in _SERVER_SOURCE_TYPES:
+            frame_image = await run_in_threadpool(_encode_preview_frame, frame)
+            if frame_image:
+                payload["frame_image"] = frame_image
+
         await websocket.send_text(json.dumps(payload))
 
 
@@ -163,8 +210,21 @@ async def process_stream_socket(websocket: WebSocket) -> None:
         logger.info("WebSocket disconnected before config payload")
         return
 
-    source_type = config.get("source_type", "webcam")
+    source_type = str(config.get("source_type", "webcam")).strip().lower()
     source_path = config.get("source_path")
+    if source_type == "webcam":
+        source_type = "browser_webcam"
+
+    if source_type not in _ALLOWED_SOURCE_TYPES:
+        await websocket.send_json(
+            {
+                "type": "error",
+                "fatal": True,
+                "message": f"Unsupported source type: {source_type}",
+            }
+        )
+        await websocket.close(code=1003)
+        return
 
     face_service = websocket.app.state.face_service
     attendance_service = websocket.app.state.attendance_service
@@ -174,13 +234,20 @@ async def process_stream_socket(websocket: WebSocket) -> None:
         resolved_source = Path(source_path).resolve()
         if not resolved_source.is_relative_to(VIDEO_UPLOADS_ROOT.resolve()):
             await websocket.send_json(
-                {"type": "error", "message": "Invalid source path"}
+                {
+                    "type": "error",
+                    "fatal": True,
+                    "message": "Invalid source path",
+                }
             )
             await websocket.close(code=1008)
             return
         source_path = str(resolved_source)
 
     ingestion = VideoIngestionService(source_type=source_type, source_path=source_path)
+
+    async def on_stream_status(payload: dict[str, object]) -> None:
+        await websocket.send_json(payload)
 
     async def on_frame(frame) -> None:
         await _process_frame(
@@ -234,7 +301,7 @@ async def process_stream_socket(websocket: WebSocket) -> None:
                     source_type,
                 )
         else:
-            await ingestion.process_stream(on_frame)
+            await ingestion.process_stream(on_frame, on_stream_status)
 
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.send_json({"type": "done"})
@@ -243,8 +310,14 @@ async def process_stream_socket(websocket: WebSocket) -> None:
     except Exception as exc:
         logger.exception("WebSocket processing failed: %s", exc)
         if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.send_json({"type": "error", "message": str(exc)})
+            await websocket.send_json(
+                {"type": "error", "fatal": True, "message": str(exc)}
+            )
     finally:
         ingestion.stop()
         if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.close()
+            try:
+                await websocket.close()
+            except RuntimeError:
+                # Close frame already sent or connection already closed.
+                pass
