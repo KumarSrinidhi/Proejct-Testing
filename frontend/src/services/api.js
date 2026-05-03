@@ -87,6 +87,8 @@ export const attendanceApi = {
   heatmap: () => api.get("/api/attendance/heatmap"),
   trends: () => api.get("/api/attendance/trends"),
   exportCsv: (params = {}) => api.get("/api/attendance/export", { params, responseType: "blob" }),
+  /** Manually log attendance for a known person (teacher/admin only). */
+  createManual: (payload) => api.post("/api/attendance/manual", payload),
 };
 
 export const attendanceExceptionApi = {

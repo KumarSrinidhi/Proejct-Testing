@@ -14,6 +14,7 @@ from app.models.person import Person
 from app.models.user import User
 from app.schemas.attendance import (
     AttendanceListResponse,
+    AttendanceManualCreate,
     AttendanceRead,
     AttendanceTodaySummary,
     AttendanceUpdate,
@@ -188,6 +189,62 @@ async def get_trends(
     _: object = Depends(require_teacher_or_admin),
 ) -> dict[str, object]:
     return await analytics_service.get_trends(db)
+
+
+@router.post("/manual", response_model=AttendanceRead, status_code=201)
+async def create_manual_attendance(
+    payload: AttendanceManualCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+) -> AttendanceRead:
+    """Manually log attendance for a known person from the Undetected Faces review queue."""
+    # Verify the person exists.
+    person_result = await db.execute(select(Person).where(Person.id == payload.person_id))
+    person = person_result.scalar_one_or_none()
+    if person is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Person not found"
+        )
+
+    ts = payload.timestamp or datetime.now(timezone.utc)
+    # Normalise to UTC-aware datetime.
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+
+    attendance = Attendance(
+        person_id=payload.person_id,
+        timestamp=ts,
+        confidence_score=1.0,          # manually confirmed — treat as 100 % confident
+        cropped_face_path="manual_entry",
+        is_active=True,
+    )
+    db.add(attendance)
+    await db.commit()
+    await db.refresh(attendance)
+
+    await log_audit_event(
+        db,
+        actor=current_user,
+        action="manual_attendance",
+        entity_type="attendance",
+        entity_id=attendance.id,
+        metadata={
+            "person_id": payload.person_id,
+            "person_name": person.name,
+            "timestamp": ts.isoformat(),
+            "undetected_face_id": payload.undetected_face_id,
+        },
+    )
+
+    return AttendanceRead(
+        id=attendance.id,
+        person_id=attendance.person_id,
+        person_name=person.name,
+        department=person.department or "",
+        timestamp=_ensure_utc(attendance.timestamp),
+        confidence_score=attendance.confidence_score,
+        cropped_face_path=attendance.cropped_face_path,
+    )
 
 
 @router.put("/{attendance_id}", response_model=AttendanceRead)

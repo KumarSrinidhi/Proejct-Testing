@@ -34,8 +34,11 @@ async def list_undetected_faces(
     query = select(UndetectedFace)
     count_query = select(func.count(UndetectedFace.id))
     if reviewed is not None:
-        query = query.where(UndetectedFace.reviewed.is_(reviewed))
-        count_query = count_query.where(UndetectedFace.reviewed.is_(reviewed))
+        # Use == (not .is_()) for a NOT NULL boolean column.
+        # .is_(False) generates `WHERE reviewed IS FALSE` which silently drops
+        # any rows where reviewed is NULL (e.g. direct DB writes).
+        query = query.where(UndetectedFace.reviewed == reviewed)
+        count_query = count_query.where(UndetectedFace.reviewed == reviewed)
 
     total, rows = await paginate_select(
         db,

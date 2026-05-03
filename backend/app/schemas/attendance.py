@@ -28,3 +28,10 @@ class AttendanceListResponse(BaseModel):
 class AttendanceUpdate(BaseModel):
     timestamp: datetime
     confidence_score: float = Field(ge=0.0, le=1.0)
+
+
+class AttendanceManualCreate(BaseModel):
+    """Payload for manually logging attendance from the Undetected Faces review queue."""
+    person_id: int
+    timestamp: datetime | None = None          # defaults to now (UTC) on the backend
+    undetected_face_id: int | None = None      # optional — for audit trail linkage
