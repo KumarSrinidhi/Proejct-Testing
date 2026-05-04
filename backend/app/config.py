@@ -41,7 +41,7 @@ class Settings(BaseSettings):
             "ATTENDANCE_WINDOW_SECONDS", "ATTENDANCE_COOLDOWN_SECONDS"
         ),
     )
-    frame_process_interval: float = 1.0
+    frame_process_interval: float = 0.0
 
     # GPU settings
     cuda_enabled: bool = True
@@ -57,7 +57,11 @@ class Settings(BaseSettings):
     rtsp_reconnect_attempts: int = 5
     rtsp_reconnect_base_delay_seconds: float = 1.0
     rtsp_reconnect_max_delay_seconds: float = 10.0
-    rtsp_capture_buffer_size: int = 1
+    rtsp_capture_buffer_size: int = 3
+    # Ingestion worker tuning
+    worker_count: int = 2
+    frame_queue_size: int = 8
+    batch_inference: bool = True
     rtsp_ffmpeg_capture_options: str = (
         "rtsp_transport;tcp|stimeout;8000000|max_delay;500000"
     )

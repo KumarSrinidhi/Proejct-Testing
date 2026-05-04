@@ -33,7 +33,7 @@ class UserCreateRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
     role: str = Field(default="student", pattern="^(admin|teacher|student)$")
-    create_person_profile: bool = True
+    create_person_profile: bool = False
     person_name: str | None = Field(default=None, min_length=1, max_length=200)
     person_department: str | None = Field(default=None, min_length=1, max_length=200)
 

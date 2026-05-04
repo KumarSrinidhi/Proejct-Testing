@@ -131,7 +131,7 @@ class FaceRecognitionService:
             if target_longest > 1920:
                 continue
             resized = cv2.resize(
-                image, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
+                image, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR
             )
             candidates.append(resized)
         return candidates
@@ -296,41 +296,81 @@ class FaceRecognitionService:
     def _search_embedding(
         self, emb: np.ndarray
     ) -> tuple[int | None, str | None, float]:
+        result = self._search_embeddings(emb.reshape(1, -1).astype(np.float32))
+        return result[0]
+
+    def _search_embeddings(
+        self, embeddings: np.ndarray
+    ) -> list[tuple[int | None, str | None, float]]:
         with self._state_lock:
             if self._gpu_available and self._torch_embeddings is not None:
-                person_id, score = self._search_with_torch_gpu(emb)
-                if person_id is None or score <= settings.recognition_threshold:
-                    return None, None, score
-                return person_id, self._person_name_cache.get(person_id), score
+                if self._torch is None:
+                    return [(None, None, 0.0) for _ in range(len(embeddings))]
+                device = (
+                    "cuda"
+                    if getattr(self._torch, "cuda", None) is not None
+                    and self._torch.cuda.is_available()
+                    else "cpu"
+                )
+                queries = self._torch.from_numpy(embeddings.astype(np.float32)).to(device)
+                sims = self._torch.matmul(self._torch_embeddings, queries.T)
+                best_scores, best_indices = self._torch.max(sims, dim=0)
+                results: list[tuple[int | None, str | None, float]] = []
+                for score_tensor, index_tensor in zip(best_scores, best_indices):
+                    score = float(score_tensor.item())
+                    idx = int(index_tensor.item())
+                    if idx < 0 or idx >= len(self._index_to_person_id):
+                        results.append((None, None, 0.0))
+                        continue
+                    person_id = self._index_to_person_id[idx]
+                    if score <= settings.recognition_threshold:
+                        results.append((None, None, score))
+                    else:
+                        results.append(
+                            (person_id, self._person_name_cache.get(person_id), score)
+                        )
+                return results
 
             if settings.gpu_strict_mode and self._gpu_available:
                 logger.error("GPU strict mode blocked CPU similarity search fallback")
-                return None, None, 0.0
+                return [(None, None, 0.0) for _ in range(len(embeddings))]
 
             if self._faiss is None or self._index is None:
-                best_person = None
-                best_score = -1.0
-                for person_id, vector in self._embeddings_cache.items():
-                    candidate = np.array(vector, dtype=np.float32)
-                    score = float(np.dot(emb, candidate))
-                    if score > best_score:
-                        best_person = person_id
-                        best_score = score
-                if best_person is None or best_score <= settings.recognition_threshold:
-                    return None, None, 0.0
-                return best_person, self._person_name_cache.get(best_person), best_score
+                if not self._embeddings_cache:
+                    return [(None, None, 0.0) for _ in range(len(embeddings))]
+                cache_person_ids = list(self._embeddings_cache.keys())
+                cache_matrix = np.stack(
+                    [np.array(self._embeddings_cache[pid], dtype=np.float32) for pid in cache_person_ids]
+                )
+                scores = cache_matrix @ embeddings.T
+                best_indices = np.argmax(scores, axis=0)
+                best_scores = scores[best_indices, np.arange(scores.shape[1])]
+                results: list[tuple[int | None, str | None, float]] = []
+                for idx, score in zip(best_indices, best_scores):
+                    person_id = cache_person_ids[int(idx)]
+                    score_f = float(score)
+                    if score_f <= settings.recognition_threshold:
+                        results.append((None, None, score_f))
+                    else:
+                        results.append((person_id, self._person_name_cache.get(person_id), score_f))
+                return results
 
-            query = emb.reshape(1, -1).astype(np.float32)
+            query = embeddings.astype(np.float32)
             scores, indices = self._index.search(query, k=1)
-            score = float(scores[0][0])
-            idx = int(indices[0][0])
-            if idx < 0 or idx >= len(self._index_to_person_id):
-                return None, None, 0.0
+            results: list[tuple[int | None, str | None, float]] = []
+            for score_row, index_row in zip(scores, indices):
+                score = float(score_row[0])
+                idx = int(index_row[0])
+                if idx < 0 or idx >= len(self._index_to_person_id):
+                    results.append((None, None, 0.0))
+                    continue
 
-            person_id = self._index_to_person_id[idx]
-            if score <= settings.recognition_threshold:
-                return None, None, score
-            return person_id, self._person_name_cache.get(person_id), score
+                person_id = self._index_to_person_id[idx]
+                if score <= settings.recognition_threshold:
+                    results.append((None, None, score))
+                else:
+                    results.append((person_id, self._person_name_cache.get(person_id), score))
+            return results
 
     async def rebuild_index(self, db: AsyncSession) -> dict[str, int]:
         start = perf_counter()
@@ -526,12 +566,24 @@ class FaceRecognitionService:
             return []
 
         faces = self._extract_faces(frame)
-        results: list[dict[str, Any]] = []
+        if not faces:
+            return []
+
+        embeddings: list[np.ndarray] = []
+        valid_faces: list[Any] = []
         for face in faces:
             emb = self._embedding_from_face(face)
             if emb is None:
                 continue
-            person_id, name, confidence = self._search_embedding(emb)
+            embeddings.append(emb)
+            valid_faces.append(face)
+
+        if not embeddings:
+            return []
+
+        batch_results = self._search_embeddings(np.stack(embeddings).astype(np.float32))
+        results: list[dict[str, Any]] = []
+        for face, (person_id, name, confidence) in zip(valid_faces, batch_results):
             results.append(
                 {
                     "person_id": person_id,

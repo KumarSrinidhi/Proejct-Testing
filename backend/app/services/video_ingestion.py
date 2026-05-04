@@ -197,7 +197,8 @@ class VideoIngestionService:
                     if self.source_type == "rtsp":
                         read_failures += 1
                         if read_failures < read_failure_threshold:
-                            await asyncio.sleep(settings.frame_process_interval)
+                            if settings.frame_process_interval and settings.frame_process_interval > 0:
+                                await asyncio.sleep(settings.frame_process_interval)
                             continue
 
                         capture.release()
@@ -247,13 +248,15 @@ class VideoIngestionService:
                             )
                             break
                         continue
-                    await asyncio.sleep(settings.frame_process_interval)
+                    if settings.frame_process_interval and settings.frame_process_interval > 0:
+                        await asyncio.sleep(settings.frame_process_interval)
                     continue
 
                 read_failures = 0
                 reconnect_attempts = 0
                 await frame_callback(frame)
-                await asyncio.sleep(settings.frame_process_interval)
+                if settings.frame_process_interval and settings.frame_process_interval > 0:
+                    await asyncio.sleep(settings.frame_process_interval)
             await self._emit_status(status_callback, status="stopped")
         except asyncio.CancelledError:
             raise

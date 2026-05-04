@@ -8,6 +8,7 @@ from time import perf_counter
 
 import cv2
 import numpy as np
+import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 from fastapi.concurrency import run_in_threadpool
@@ -25,6 +26,7 @@ from app.utils.audit import log_audit_event
 logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
+_inference_semaphore = asyncio.Semaphore(max(1, int(getattr(settings, "worker_count", 1))))
 
 # Roles allowed to open the live recognition stream
 _WEBCAM_ALLOWED_ROLES = {ROLE_ADMIN, ROLE_TEACHER}
@@ -250,14 +252,26 @@ async def process_stream_socket(websocket: WebSocket) -> None:
         await websocket.send_json(payload)
 
     async def on_frame(frame) -> None:
-        await _process_frame(
-            websocket,
-            frame,
-            face_service,
-            attendance_service,
-            undetected_face_service,
-            source_type,
-        )
+        try:
+            await asyncio.wait_for(_inference_semaphore.acquire(), timeout=0)
+        except asyncio.TimeoutError:
+            # Queue is busy; drop the frame to avoid growing backlog
+            return
+        else:
+            async def _worker():
+                try:
+                    await _process_frame(
+                        websocket,
+                        frame,
+                        face_service,
+                        attendance_service,
+                        undetected_face_service,
+                        source_type,
+                    )
+                finally:
+                    _inference_semaphore.release()
+
+            asyncio.create_task(_worker())
 
     try:
         if source_type == "browser_webcam":
@@ -292,14 +306,27 @@ async def process_stream_socket(websocket: WebSocket) -> None:
                     )
                     continue
 
-                await _process_frame(
-                    websocket,
-                    frame,
-                    face_service,
-                    attendance_service,
-                    undetected_face_service,
-                    source_type,
-                )
+                try:
+                    await asyncio.wait_for(_inference_semaphore.acquire(), timeout=0)
+                except asyncio.TimeoutError:
+                    # Drop browser frame when workers are busy
+                    await websocket.send_json({"type": "warning", "message": "server busy, frame dropped"})
+                    continue
+                else:
+                    async def _worker_browser():
+                        try:
+                            await _process_frame(
+                                websocket,
+                                frame,
+                                face_service,
+                                attendance_service,
+                                undetected_face_service,
+                                source_type,
+                            )
+                        finally:
+                            _inference_semaphore.release()
+
+                    asyncio.create_task(_worker_browser())
         else:
             await ingestion.process_stream(on_frame, on_stream_status)
 

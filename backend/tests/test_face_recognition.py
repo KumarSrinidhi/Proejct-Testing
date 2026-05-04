@@ -79,3 +79,35 @@ def test_extract_embedding_uses_resize_fallback() -> None:
     assert emb is not None
     assert detected_face is face
     assert np.isclose(np.linalg.norm(emb), 1.0)
+
+
+def test_recognize_faces_uses_batched_search() -> None:
+    service = FaceRecognitionService()
+    service._faiss = object()
+    service._index_to_person_id = [10, 20]
+    service._person_name_cache = {10: "Alice", 20: "Bob"}
+
+    face1 = MagicMock(bbox=[0, 0, 10, 10], embedding=np.ones((512,), dtype=np.float32))
+    face2 = MagicMock(bbox=[10, 0, 20, 10], embedding=np.full((512,), 2.0, dtype=np.float32))
+
+    class FakeFaceApp:
+        def get(self, _img):
+            return [face1, face2]
+
+    class FakeIndex:
+        def search(self, query, k=1):
+            assert query.shape == (2, 512)
+            scores = np.array([[0.91], [0.82]], dtype=np.float32)
+            indices = np.array([[0], [1]], dtype=np.int64)
+            return scores, indices
+
+    service._face_app = FakeFaceApp()
+    service._index = FakeIndex()
+
+    results = service.recognize_faces(np.zeros((16, 16, 3), dtype=np.uint8))
+
+    assert len(results) == 2
+    assert results[0]["person_id"] == 10
+    assert results[0]["name"] == "Alice"
+    assert results[1]["person_id"] == 20
+    assert results[1]["name"] == "Bob"

@@ -18,7 +18,7 @@ export default function AdminUsersPage() {
   const pageSize = 20;
   const [form, setForm] = useState({
     username: "", email: "", password: "", role: "student",
-    create_person_profile: true, person_name: "", person_department: "",
+    create_person_profile: false, person_name: "", person_department: "",
   });
   const [resetPasswordByUserId, setResetPasswordByUserId] = useState({});
   const [message, setMessage] = useState({ text: "", type: "info" });
@@ -51,7 +51,7 @@ export default function AdminUsersPage() {
     setMsg("");
     try {
       await userApi.create(form);
-      setForm({ username: "", email: "", password: "", role: "student", create_person_profile: true, person_name: "", person_department: "" });
+      setForm({ username: "", email: "", password: "", role: "student", create_person_profile: false, person_name: "", person_department: "" });
       setMsg("User created successfully.", "success");
       setFormOpen(false);
       await loadUsers();
@@ -161,7 +161,11 @@ export default function AdminUsersPage() {
                 type="checkbox"
                 className="checkbox"
                 checked={form.create_person_profile}
-                onChange={(e) => setForm({ ...form, create_person_profile: e.target.checked })}
+                onChange={(e) => setForm({
+                  ...form,
+                  create_person_profile: e.target.checked,
+                  ...(e.target.checked ? {} : { person_name: "", person_department: "" }),
+                })}
                 disabled={busy}
               />
               Also create / update a linked person profile

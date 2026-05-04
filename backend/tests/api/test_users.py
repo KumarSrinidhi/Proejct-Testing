@@ -56,6 +56,26 @@ async def test_create_user(client, admin_token, setup_users):
 
 
 @pytest.mark.asyncio
+async def test_create_user_defaults_without_linked_person(client, admin_token, setup_users):
+    username = f"defaultuser_{uuid.uuid4().hex[:8]}"
+    resp = await client.post(
+        "/api/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "username": username,
+            "email": f"{username}@example.com",
+            "password": "securepassword",
+            "role": "student",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["username"] == username
+    assert body["person_name"] is None
+    assert body["person_department"] is None
+
+
+@pytest.mark.asyncio
 async def test_create_user_duplicate_username(client, admin_token, setup_users):
     resp = await client.post(
         "/api/users",
